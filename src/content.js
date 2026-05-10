@@ -323,16 +323,32 @@
   /* ================================================
        FAB controller (state machine).
        States: idle | pressing | dragging | hovering | snapping
-       - All position/transition writes go through fab.style here.
-       - The CSS does NOT animate `left`/`top`; only JS does, scoped per move.
-       - Snap is a single one-shot transition guarded by `snapping`, so a
-         late mouseleave/mouseenter cannot restart it midway.
+
+       Key design points (after several iterations):
+       - Drag is 1:1 with the pointer: NO CSS transition on left/top while
+         dragging. Every previous version that animated drag (even 80ms)
+         introduced lag at 60fps.
+       - Hover is NOT detected via pointerenter/leave on the fab. When the
+         fab is snapped, only 8–12px of it is on-screen; peeking moves the
+         fab body to x=15, which (especially on the left side) can leave
+         the user's pointer outside the fab → instant leave → flicker.
+         Instead we track the pointer on document and hit-test against a
+         hover ZONE anchored at the snapped position. The zone doesn't
+         move when the fab peeks, so the loop cannot occur.
+       - Hover transitions are debounced; a quick brush past the edge
+         doesn't pop the fab in and out.
+       - When we land back in `idle`, we re-check the hover zone once so a
+         pointer parked over the fab during a snap still triggers peek.
     ================================================ */
   const FAB_EASE_SNAP = "cubic-bezier(0.16, 0.84, 0.32, 1.08)"; // slow→fast→tiny overshoot
-  const FAB_EASE_PEEK = "cubic-bezier(0.22, 1, 0.36, 1)";       // gentle ease-out for hover
+  const FAB_EASE_PEEK = "cubic-bezier(0.22, 1, 0.36, 1)";       // gentle ease-out
   const FAB_DUR_SNAP = 420;
-  const FAB_DUR_PEEK = 240;
-  const FAB_DRAG_DUR = 80;
+  const FAB_DUR_PEEK_IN = 340;     // slower than before per user feedback
+  const FAB_DUR_PEEK_OUT = 440;
+  const HOVER_ZONE_W = 56;         // pointer hit zone, measured inward from the snap edge
+  const HOVER_ZONE_PAD_Y = 24;     // extra vertical padding around the snapped fab
+  const HOVER_DEBOUNCE_IN = 120;
+  const HOVER_DEBOUNCE_OUT = 180;
 
   function bindFabEvents(fab) {
     const DRAG_THRESHOLD = 8;
@@ -341,7 +357,12 @@
     let downX = 0, downY = 0;
     let offX = 0, offY = 0;
     let snapEndTimer = null;
-    let leaveTimer = null;
+
+    // Hover-zone tracker
+    let lastPointer = { x: -1, y: -1 };
+    let hoverInTimer = null;
+    let hoverOutTimer = null;
+    let pointerMoveScheduled = false;
 
     const snapLeftX = () => -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN;
     const snapRightX = () => window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW();
@@ -353,9 +374,11 @@
     };
 
     function setTransition(value) {
-      // We own these properties from JS — write the literal string so it
-      // can be cleared with `none` and not merged with CSS shorthand.
-      fab.style.transition = value;
+      // Always keep the transform/box-shadow transitions alive (used by
+      // :hover scale and the press/click feedback). Only left/top are
+      // owned per-animation by JS.
+      const base = "transform .26s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .26s ease";
+      fab.style.transition = value === "none" ? base : `${value}, ${base}`;
     }
 
     function animateTo(x, y, dur, ease, onDone) {
@@ -372,37 +395,99 @@
       }, dur + 30);
     }
 
+    function clearHoverTimers() {
+      if (hoverInTimer) { clearTimeout(hoverInTimer); hoverInTimer = null; }
+      if (hoverOutTimer) { clearTimeout(hoverOutTimer); hoverOutTimer = null; }
+    }
+
+    /* ---- Hover zone, anchored at the SNAPPED position (not runtime rect) ---- */
+    function pointerInHoverZone(x, y) {
+      const side = currentSide();
+      const fabTop = parseFloat(fab.style.top) || fab.getBoundingClientRect().top;
+      const fabH = fab.offsetHeight || 35;
+      // X-band: from the screen edge inward by HOVER_ZONE_W.
+      // Use 0/innerWidth as the edges so the zone covers the visible
+      // sliver of the fab too, regardless of its current peek state.
+      const xMin = side === "left" ? 0 : window.innerWidth - HOVER_ZONE_W;
+      const xMax = side === "left" ? HOVER_ZONE_W : window.innerWidth;
+      const yMin = fabTop - HOVER_ZONE_PAD_Y;
+      const yMax = fabTop + fabH + HOVER_ZONE_PAD_Y;
+      return x >= xMin && x <= xMax && y >= yMin && y <= yMax;
+    }
+
+    function evaluateHover() {
+      if (state !== "idle" && state !== "hovering") return;
+      const inside = pointerInHoverZone(lastPointer.x, lastPointer.y);
+      if (inside && state === "idle") {
+        if (hoverInTimer) return;
+        if (hoverOutTimer) { clearTimeout(hoverOutTimer); hoverOutTimer = null; }
+        hoverInTimer = setTimeout(() => {
+          hoverInTimer = null;
+          if (state !== "idle") return;
+          if (!pointerInHoverZone(lastPointer.x, lastPointer.y)) return;
+          startPeek();
+        }, HOVER_DEBOUNCE_IN);
+      } else if (!inside && state === "hovering") {
+        if (hoverOutTimer) return;
+        if (hoverInTimer) { clearTimeout(hoverInTimer); hoverInTimer = null; }
+        hoverOutTimer = setTimeout(() => {
+          hoverOutTimer = null;
+          if (state !== "hovering") return;
+          if (pointerInHoverZone(lastPointer.x, lastPointer.y)) return;
+          endPeek();
+        }, HOVER_DEBOUNCE_OUT);
+      } else if (inside && state === "hovering") {
+        // Re-entered while a pending out-debounce was running.
+        if (hoverOutTimer) { clearTimeout(hoverOutTimer); hoverOutTimer = null; }
+      } else if (!inside && state === "idle") {
+        // Left during an in-debounce.
+        if (hoverInTimer) { clearTimeout(hoverInTimer); hoverInTimer = null; }
+      }
+    }
+
+    document.addEventListener("pointermove", (e) => {
+      if (e.pointerType && e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
+      if (pointerMoveScheduled) return;
+      pointerMoveScheduled = true;
+      requestAnimationFrame(() => {
+        pointerMoveScheduled = false;
+        evaluateHover();
+      });
+    }, { passive: true });
+
+    function transitionToIdle() {
+      state = "idle";
+      // Run hit test once so a pointer parked on the fab gets peeked.
+      evaluateHover();
+    }
+
     function startSnap() {
       state = "snapping";
+      clearHoverTimers();
       window.snapSide = currentSide();
       const targetX = window.snapSide === "left" ? snapLeftX() : snapRightX();
-      animateTo(targetX, null, FAB_DUR_SNAP, FAB_EASE_SNAP, () => {
-        state = "idle";
-      });
+      animateTo(targetX, null, FAB_DUR_SNAP, FAB_EASE_SNAP, transitionToIdle);
     }
 
     function startPeek() {
-      // Called when the pointer enters the fab while it's resting (snapped).
       state = "hovering";
       const targetX = currentSide() === "left" ? peekLeftX() : peekRightX();
-      animateTo(targetX, null, FAB_DUR_PEEK, FAB_EASE_PEEK);
+      animateTo(targetX, null, FAB_DUR_PEEK_IN, FAB_EASE_PEEK);
     }
 
     function endPeek() {
-      // After hover, snap back to edge with a softer curve (no overshoot).
       state = "snapping";
       const targetX = currentSide() === "left" ? snapLeftX() : snapRightX();
-      animateTo(targetX, null, FAB_DUR_PEEK + 60, FAB_EASE_PEEK, () => {
-        state = "idle";
-      });
+      animateTo(targetX, null, FAB_DUR_PEEK_OUT, FAB_EASE_PEEK, transitionToIdle);
     }
 
-    /* ---- Pointer interaction (replaces mousedown/mousemove/mouseup mix) ---- */
+    /* ---- Pointer interaction on the fab itself ---- */
     fab.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
-      // Cancel any in-flight snap/peek; we own the fab now.
       if (snapEndTimer) { clearTimeout(snapEndTimer); snapEndTimer = null; }
-      if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+      clearHoverTimers();
 
       state = "pressing";
       pointerId = e.pointerId;
@@ -413,12 +498,12 @@
       offY = e.clientY - rect.top;
       downX = e.clientX;
       downY = e.clientY;
-      // Freeze current position; from here on we drive transitions.
+      // Freeze current position immediately; cancel any in-flight animation.
+      setTransition("none");
       fab.style.left = rect.left + "px";
       fab.style.top = rect.top + "px";
       fab.style.right = "auto";
       fab.style.bottom = "auto";
-      setTransition("transform .12s ease-out");
       fab.classList.add("ais-fab-pressing");
     });
 
@@ -429,8 +514,8 @@
         if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
         state = "dragging";
         fab.classList.remove("ais-fab-pressing");
-        setTransition(`left ${FAB_DRAG_DUR}ms ease-out, top ${FAB_DRAG_DUR}ms ease-out`);
       }
+      // 1:1 with the pointer. No transition during drag.
       const left = Math.max(10, Math.min(window.innerWidth - fab.offsetWidth - 10, e.clientX - offX));
       const top = Math.max(10, Math.min(window.innerHeight - fab.offsetHeight - 10, e.clientY - offY));
       fab.style.left = left + "px";
@@ -454,11 +539,10 @@
       fab.classList.remove("ais-fab-pressing");
 
       if (!wasDragging) {
-        // Click: toggle the panel. No snap, no peek interference.
+        // Click: toggle the panel.
         state = "idle";
         setTransition("none");
         fab.classList.remove("ais-fab-clicking");
-        // force reflow so the animation restarts
         void fab.offsetWidth;
         fab.classList.add("ais-fab-clicking");
         fab.addEventListener("animationend",
@@ -467,11 +551,11 @@
         panelOpen = !panelOpen;
         if (panelOpen) positionMainPanelBasedOnFab();
         toggle("ais-main", panelOpen);
+        // Don't re-evaluate hover on click — user is busy with the panel.
         return;
       }
 
-      // Dragging → persist + snap (single animation, not interruptible
-      // by pointerleave because we suppress that path in `snapping` state).
+      // Dragging → persist + snap.
       const rect = fab.getBoundingClientRect();
       chrome.storage.local.set({
         fab_position: {
@@ -487,28 +571,6 @@
       if (state === "dragging") startSnap();
       else { state = "idle"; setTransition("none"); }
       fab.classList.remove("ais-fab-pressing");
-    });
-
-    /* ---- Hover peek (only when idle) ---- */
-    fab.addEventListener("pointerenter", (e) => {
-      // Ignore the synthetic enter we get after a touch/pointer release.
-      if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
-      if (state !== "idle") return;
-      if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
-      startPeek();
-    });
-
-    fab.addEventListener("pointerleave", (e) => {
-      if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
-      if (state !== "hovering") return;
-      // Short debounce so users moving along the edge don't trigger
-      // snap-back/peek-out flicker.
-      if (leaveTimer) clearTimeout(leaveTimer);
-      leaveTimer = setTimeout(() => {
-        leaveTimer = null;
-        if (state !== "hovering") return;
-        endPeek();
-      }, 100);
     });
   }
 
