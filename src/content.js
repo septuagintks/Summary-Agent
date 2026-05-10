@@ -1,22 +1,30 @@
 /*
  * Content script for AI Summary extension.
+ * Port of the AI-summary Tampermonkey userscript (see ../AI-summary).
  *
- * Status: scaffold. Renders a minimal floating button and an empty panel,
- * and proves end-to-end streaming via the service worker port.
- *
- * TODO (port from the userscript):
- *   - Full panel UI (header, meta, body, footer, chat input)
- *   - Settings panel + presets
- *   - Drag, snap-to-edge, hover pop-out
- *   - Markdown rendering, toasts, copy
- *   - Stop / re-summarize / multi-round chat
- * The userscript at ../AI-summary is the source of truth for behavior.
+ * Differences from the userscript:
+ *   - GM_xmlhttpRequest (streaming) → chrome.runtime.connect("ai-call") to the service worker
+ *   - GM_setValue/getValue       → chrome.storage.local
+ *   - GM_addStyle                → content.css (loaded via manifest)
+ *   - Settings panel             → opens the extension's options page in a new tab
+ *                                  (the in-userscript settings panel is intentionally not ported)
  */
 (() => {
   if (window.__aiSummaryInjected) return;
   window.__aiSummaryInjected = true;
 
-  /* ---------- Inline content extraction (mirrors src/lib/extract.js) ---------- */
+  /* ================================================
+       Constants
+    ================================================ */
+  const SNAP_PEEK_L = 8;
+  const SNAP_PEEK_R = 12;
+  const scrollbarW = () => window.innerWidth - document.documentElement.clientWidth;
+  const PANEL_W = 420;
+  const MARGIN = 10;
+
+  /* ================================================
+       Content extraction
+    ================================================ */
   const STRIP_SEL = [
     "script", "style", "noscript", "iframe", "svg", "canvas",
     "nav", "header", "footer", "aside",
@@ -57,123 +65,589 @@
     }
   }
 
-  /* ---------- Minimal UI (placeholder) ---------- */
-  const wrap = document.createElement("div");
-  wrap.id = "ais-fab-wrap";
+  /* ================================================
+       Markdown rendering
+    ================================================ */
+  function renderMd(raw) {
+    const esc0 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const lines = esc0(raw).split("\n");
+    let html = "";
+    let inUl = false;
 
-  const fab = document.createElement("button");
-  fab.id = "ais-fab";
-  fab.title = "AI Content Summary";
-  fab.textContent = "📍";
-  wrap.appendChild(fab);
+    for (const rawLine of lines) {
+      let line = rawLine
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>")
+        .replace(/`(.+?)`/g, '<code class="ais-code">$1</code>');
 
-  const panel = document.createElement("div");
-  panel.id = "ais-main";
-  panel.className = "ais-off";
-  panel.innerHTML = `
-    <div class="ais-hd">
-      <span class="ais-hd-title">🤖 AI Content Summary</span>
-      <button class="ais-hbtn" id="ais-cfg-open">⚙️</button>
-      <button class="ais-hbtn" id="ais-main-close">✕</button>
-    </div>
-    <div class="ais-meta" id="ais-meta"></div>
-    <div class="ais-body" id="ais-body">
-      <div class="ais-ph">Click "Start Summary" to analyze this page.</div>
-    </div>
-    <div class="ais-ft">
-      <button class="ais-btn ais-danger" id="ais-stop" style="display:none">⏹ Stop</button>
-      <button class="ais-btn ais-primary" id="ais-run">✨ Start Summary</button>
-    </div>
-  `;
+      if (/^#{1,3} /.test(rawLine)) {
+        if (inUl) { html += "</ul>"; inUl = false; }
+        html += `<h3 class="ais-h">${line.replace(/^#+\s*/, "")}</h3>`;
+        continue;
+      }
+      if (/^[-*•] /.test(rawLine)) {
+        if (!inUl) { html += '<ul class="ais-ul">'; inUl = true; }
+        html += `<li>${line.replace(/^[-*•]\s*/, "")}</li>`;
+        continue;
+      }
+      if (inUl) { html += "</ul>"; inUl = false; }
+      if (!rawLine.trim()) { html += "<br>"; continue; }
+      html += `<p>${line}</p>`;
+    }
+    if (inUl) html += "</ul>";
+    return html;
+  }
 
-  document.body.appendChild(wrap);
-  document.body.appendChild(panel);
-
+  /* ================================================
+       Utilities
+    ================================================ */
   const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = (s) =>
+    String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const toggle = (id, show) => $(id)?.classList.toggle("ais-off", !show);
+  const setBody = (html) => { const b = $("ais-body"); if (b) b.innerHTML = html; };
 
-  let panelOpen = false;
+  function showToast(msg, color = "#111827") {
+    const t = document.createElement("div");
+    t.className = "ais-toast";
+    t.style.background = color;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => {
+      t.style.opacity = "0";
+      setTimeout(() => t.remove(), 400);
+    }, 2200);
+  }
+
+  function setLoading(v) {
+    const run = $("ais-run"), stop = $("ais-stop"), chat = $("ais-chat-wrap");
+    if (stop) stop.style.display = v ? "" : "none";
+    if (v) {
+      if (run) run.style.display = "none";
+      if (chat) chat.style.display = "none";
+    }
+  }
+
+  function showChatMode() {
+    $("ais-run").style.display = "none";
+    $("ais-chat-wrap").style.display = "flex";
+    $("ais-chat-input").focus();
+  }
+
+  /* ================================================
+       AI call (port to service worker)
+    ================================================ */
   let currentPort = null;
 
-  fab.addEventListener("click", () => {
-    panelOpen = !panelOpen;
-    toggle("ais-main", panelOpen);
-  });
-  $("ais-main-close").addEventListener("click", () => {
-    panelOpen = false;
-    toggle("ais-main", false);
-  });
-  $("ais-cfg-open").addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "open-options" }).catch(() => {});
-  });
-  $("ais-run").addEventListener("click", runSummary);
-  $("ais-stop").addEventListener("click", stopSummary);
-
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === "open-and-summarize") {
-      panelOpen = true;
-      toggle("ais-main", true);
-      runSummary();
-    }
-  });
-
-  function setBody(html) { $("ais-body").innerHTML = html; }
-
-  async function runSummary() {
+  function callAPI(messages, { onChunk, onDone, onError }) {
     if (currentPort) return;
-    const content = extractContent();
-    const title = document.title;
-    if (!content || content.length < 50) {
-      setBody(`<div class="ais-err">❌ Page content extraction failed or content is too short.</div>`);
-      return;
-    }
-
-    $("ais-meta").textContent = `📄 ${title}  ·  Extracted ${content.length} chars`;
-    $("ais-stop").style.display = "";
-    $("ais-run").style.display = "none";
-    setBody(`<div class="ais-loading"><div class="ais-spinner"></div> AI is analyzing...</div>`);
-
-    // Build a minimal user message; full prompt templating will be ported with the rest of the UI.
-    const cfg = await chrome.storage.local.get(["userPrompt", "maxContentLength"]);
-    const userPrompt = cfg.userPrompt ||
-      "Please summarize the following webpage.\n\nTitle: {title}\n\nContent:\n{content}";
-    const maxLen = cfg.maxContentLength || 16000;
-    const userMsg = userPrompt
-      .replace("{title}", title)
-      .replace("{content}", String(content).slice(0, maxLen));
+    let finished = false;
+    const finish = (fn, ...args) => {
+      if (finished) return;
+      finished = true;
+      currentPort = null;
+      fn?.(...args);
+    };
 
     const port = chrome.runtime.connect({ name: "ai-call" });
     currentPort = port;
-    let lastText = "";
 
     port.onMessage.addListener((msg) => {
-      if (msg.type === "chunk") {
-        lastText = msg.text;
-        setBody(`<div class="ais-res">${esc(lastText)}</div>`);
-      } else if (msg.type === "done") {
-        finishCall();
-        setBody(`<div class="ais-res">${esc(msg.text || lastText || "(empty)")}</div>`);
-      } else if (msg.type === "error") {
-        finishCall();
-        setBody(`<div class="ais-err">❌ ${esc(msg.error)}</div>`);
-      }
+      if (msg.type === "chunk") onChunk(msg.text);
+      else if (msg.type === "done") finish(onDone, msg.text);
+      else if (msg.type === "error") finish(onError, msg.error);
     });
-    port.onDisconnect.addListener(finishCall);
-
-    port.postMessage({ type: "start", messages: [{ role: "user", content: userMsg }] });
+    port.onDisconnect.addListener(() => {
+      if (!finished) finish(onError, "Connection closed");
+    });
+    port.postMessage({ type: "start", messages });
   }
 
-  function stopSummary() {
+  function abortAPI() {
     if (currentPort) {
       try { currentPort.disconnect(); } catch {}
+      currentPort = null;
     }
-    finishCall();
   }
 
-  function finishCall() {
-    currentPort = null;
-    $("ais-stop").style.display = "none";
-    $("ais-run").style.display = "";
+  /* ================================================
+       State
+    ================================================ */
+  let panelOpen = false;
+  let streaming = false;
+  let fullText = "";
+  let chatHistory = [];
+  let currentResNode = null;
+  window.snapSide = "right";
+
+  /* ================================================
+       Build UI
+    ================================================ */
+  function createMainPanel() {
+    const panel = document.createElement("div");
+    panel.id = "ais-main";
+    panel.className = "ais-off";
+    panel.innerHTML = `
+      <div class="ais-hd">
+        <span class="ais-hd-title">🤖 AI Content Summary & Chat</span>
+        <button class="ais-hbtn" id="ais-copy">📋 Copy</button>
+        <button class="ais-hbtn" id="ais-cfg-open">⚙️ Settings</button>
+        <button class="ais-hbtn" id="ais-main-close">✕</button>
+      </div>
+      <div class="ais-meta" id="ais-meta">${esc(document.title)}</div>
+      <div class="ais-body" id="ais-body">
+        <div class="ais-ph">Click the "Start Summary" button below<br>AI will automatically extract and analyze current page content 📖</div>
+      </div>
+      <div class="ais-ft" id="ais-ft-actions">
+        <button class="ais-btn ais-danger" id="ais-stop" style="display:none">⏹ Stop</button>
+        <button class="ais-btn ais-primary" id="ais-run">✨ Start Summary</button>
+        <div class="ais-chat-wrap" id="ais-chat-wrap" style="display:none;">
+          <button class="ais-btn ais-secondary ais-btn-square" id="ais-re-run" title="Re-summarize">🔄</button>
+          <input type="text" class="ais-chat-input" id="ais-chat-input" placeholder="Enter follow-up question, press Enter to send...">
+          <button class="ais-btn ais-primary ais-btn-square" id="ais-chat-send" title="Send">⬆️</button>
+        </div>
+      </div>
+    `;
+    return panel;
   }
+
+  /* ================================================
+       Make panel draggable by its header
+    ================================================ */
+  function makeDraggable(panelId) {
+    const panel = $(panelId);
+    const hd = panel.querySelector(".ais-hd");
+    if (!hd) return;
+    const DRAG_THRESHOLD = 8;
+    let isMouseDown = false, isDragging = false;
+    const start = { x: 0, y: 0 };
+    const offset = { x: 0, y: 0 };
+
+    hd.addEventListener("mousedown", (e) => {
+      if (e.target.tagName.toLowerCase() === "button") return;
+      isMouseDown = true;
+      isDragging = false;
+      const rect = panel.getBoundingClientRect();
+      start.x = e.clientX;
+      start.y = e.clientY;
+      offset.x = e.clientX - rect.left;
+      offset.y = e.clientY - rect.top;
+      panel.style.left = rect.left + "px";
+      panel.style.top = rect.top + "px";
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+      panel.style.transition = "none";
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!isMouseDown) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (!isDragging && Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+      if (!isDragging) isDragging = true;
+
+      let left = e.clientX - offset.x;
+      let top = e.clientY - offset.y;
+      left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, left));
+      top = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, top));
+      panel.style.left = left + "px";
+      panel.style.top = top + "px";
+    });
+
+    document.addEventListener("mouseup", () => {
+      if (!isMouseDown) return;
+      isMouseDown = false;
+      if (!isDragging) return;
+      isDragging = false;
+      panel.style.transition = "";
+    });
+  }
+
+  /* ================================================
+       Position main panel relative to the fab
+    ================================================ */
+  function positionMainPanelBasedOnFab() {
+    const fab = $("ais-fab");
+    const mainPanel = $("ais-main");
+    if (!fab || !mainPanel) return;
+    const fabRect = fab.getBoundingClientRect();
+    const isLeft = fabRect.left < window.innerWidth / 2;
+
+    mainPanel.style.right = "auto";
+    mainPanel.style.bottom = "auto";
+
+    let leftPos = isLeft ? fabRect.right + 15 : fabRect.left - PANEL_W - 15;
+    leftPos = Math.max(MARGIN, Math.min(window.innerWidth - PANEL_W - MARGIN, leftPos));
+    mainPanel.style.left = leftPos + "px";
+
+    const panelHeight = mainPanel.offsetHeight || PANEL_W;
+    let topPos = Math.max(MARGIN, Math.min(window.innerHeight - panelHeight - MARGIN, fabRect.top));
+    mainPanel.style.top = topPos + "px";
+  }
+
+  /* ================================================
+       Fab events: drag, snap, hover pop-out, click toggle
+    ================================================ */
+  function bindFabEvents(fab) {
+    const DRAG_THRESHOLD = 8;
+    let isDragging = false, hasMoved = false;
+    const offset = { x: 0, y: 0 };
+    const startPos = { x: 0, y: 0 };
+
+    fab.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      hasMoved = false;
+      const rect = fab.getBoundingClientRect();
+      offset.x = e.clientX - rect.left;
+      offset.y = e.clientY - rect.top;
+      startPos.x = e.clientX;
+      startPos.y = e.clientY;
+      fab.style.transition = "none";
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startPos.x, dy = e.clientY - startPos.y;
+      if (!hasMoved && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+        hasMoved = true;
+        fab.style.transition = "all 0.12s ease-out";
+        fab.style.left = e.clientX - offset.x + "px";
+        fab.style.top = e.clientY - offset.y + "px";
+        return;
+      }
+      if (!hasMoved) return;
+      fab.style.transition = "none";
+
+      let left = Math.max(10, Math.min(window.innerWidth - fab.offsetWidth - 10, e.clientX - offset.x));
+      let top = Math.max(10, Math.min(window.innerHeight - fab.offsetHeight - 10, e.clientY - offset.y));
+      fab.style.left = left + "px";
+      fab.style.top = top + "px";
+      fab.style.right = "auto";
+      fab.style.bottom = "auto";
+    });
+
+    document.addEventListener("mouseup", () => {
+      if (!isDragging) return;
+      isDragging = false;
+      if (!hasMoved) return;
+
+      const rect = fab.getBoundingClientRect();
+      const isLeft = rect.left < window.innerWidth / 2;
+      fab.style.transition = "all 0.35s cubic-bezier(0.25, 1.4, 0.4, 1)";
+      fab.style.left =
+        (isLeft
+          ? -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN
+          : window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW()) + "px";
+      fab.style.top = rect.top + "px";
+
+      chrome.storage.local.set({
+        fab_position: {
+          xRatio: rect.left / window.innerWidth,
+          yRatio: rect.top / window.innerHeight,
+        },
+      });
+      window.snapSide = isLeft ? "left" : "right";
+    });
+
+    // Hover pop-out
+    let isEntering = false, enterTimer = null, leaveTimer = null;
+
+    fab.addEventListener("mousedown", () => fab.classList.add("ais-fab-pressing"));
+    document.addEventListener(
+      "mouseup",
+      () => fab.classList.remove("ais-fab-pressing"),
+      { capture: true },
+    );
+
+    fab.addEventListener("mouseenter", () => {
+      if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+      if (enterTimer) clearTimeout(enterTimer);
+      isEntering = true;
+      const rect = fab.getBoundingClientRect();
+      fab.style.transition = "all 0.25s ease-out";
+      if (rect.left < window.innerWidth / 2) fab.style.left = "15px";
+      else fab.style.left = window.innerWidth - fab.offsetWidth - 15 + "px";
+      enterTimer = setTimeout(() => { isEntering = false; }, 350);
+    });
+
+    fab.addEventListener("mouseleave", () => {
+      if (isDragging || isEntering) return;
+      leaveTimer = setTimeout(() => {
+        leaveTimer = null;
+        const rect = fab.getBoundingClientRect();
+        fab.style.transition = "all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)";
+        if (rect.left < window.innerWidth / 2)
+          fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
+        else
+          fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW() + "px";
+      }, 120);
+    });
+
+    fab.addEventListener("click", (e) => {
+      if (hasMoved) { e.preventDefault(); e.stopPropagation(); return; }
+      fab.classList.remove("ais-fab-clicking");
+      void fab.offsetWidth;
+      fab.classList.add("ais-fab-clicking");
+      fab.addEventListener(
+        "animationend",
+        () => fab.classList.remove("ais-fab-clicking"),
+        { once: true },
+      );
+      panelOpen = !panelOpen;
+      if (panelOpen) positionMainPanelBasedOnFab();
+      toggle("ais-main", panelOpen);
+    });
+  }
+
+  /* ================================================
+       Main panel events
+    ================================================ */
+  function bindMainEvents() {
+    $("ais-main-close").addEventListener("click", () => {
+      panelOpen = false;
+      toggle("ais-main", false);
+    });
+    $("ais-cfg-open").addEventListener("click", () => {
+      chrome.runtime.sendMessage({ type: "open-options" }).catch(() => {});
+    });
+    $("ais-copy").addEventListener("click", () => {
+      if (!fullText) { showToast("No content to copy"); return; }
+      navigator.clipboard.writeText(fullText)
+        .then(() => showToast("✓ Copied to clipboard", "#16a34a"))
+        .catch(() => showToast("Copy failed, please select manually"));
+    });
+    $("ais-stop").addEventListener("click", () => {
+      abortAPI();
+      streaming = false;
+      setLoading(false);
+      if (currentResNode) {
+        currentResNode.innerHTML = renderMd(fullText || "Manually stopped");
+        currentResNode.classList.remove("ais-cursor");
+        currentResNode.removeAttribute("id");
+      }
+      if (chatHistory.length > 0) {
+        if (fullText) chatHistory.push({ role: "assistant", content: fullText });
+        $("ais-run").style.display = "none";
+        $("ais-chat-wrap").style.display = "flex";
+      } else {
+        $("ais-run").style.display = "";
+        $("ais-run").textContent = "🔄 Re-summarize";
+      }
+    });
+    $("ais-run").addEventListener("click", doSummary);
+    $("ais-re-run").addEventListener("click", doSummary);
+    $("ais-chat-send").addEventListener("click", doFollowUp);
+    $("ais-chat-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); doFollowUp(); }
+    });
+  }
+
+  /* ================================================
+       Summary / follow-up
+    ================================================ */
+  async function getCfg() {
+    const KEYS = ["userPrompt", "maxContentLength", "apiKey", "apiUrl"];
+    const got = await chrome.storage.local.get(KEYS);
+    return {
+      userPrompt:
+        got.userPrompt ||
+        "Please summarize the following webpage.\n\nTitle: {title}\n\nContent:\n{content}",
+      maxContentLength: got.maxContentLength || 16000,
+      apiKey: got.apiKey || "",
+      apiUrl: got.apiUrl || "",
+    };
+  }
+
+  async function doSummary() {
+    if (streaming) return;
+    streaming = true;
+    fullText = "";
+    chatHistory = [];
+    $("ais-run").style.display = "";
+    $("ais-run").textContent = "✨ Start Summary";
+    $("ais-chat-wrap").style.display = "none";
+    setLoading(true);
+    setBody(`<div class="ais-loading"><div class="ais-spinner"></div> Extracting page content...</div>`);
+
+    const content = extractContent();
+    const title = document.title;
+    if (!content || content.length < 50) {
+      streaming = false;
+      setLoading(false);
+      setBody(`<div class="ais-err">❌ Page content extraction failed or content is too short.</div>`);
+      $("ais-run").style.display = "";
+      return;
+    }
+
+    const cfg = await getCfg();
+    const metaEl = $("ais-meta");
+    if (metaEl) metaEl.textContent = `📄 ${title}  ·  Extracted ${content.length} chars`;
+    const userMsg = cfg.userPrompt
+      .replace("{title}", title)
+      .replace("{content}", String(content).slice(0, cfg.maxContentLength));
+    chatHistory.push({ role: "user", content: userMsg });
+    setBody(`<div id="ais-current-res" class="ais-res ais-cursor"><div class="ais-loading" style="padding:10px 0;"><div class="ais-spinner"></div> AI is analyzing...</div></div>`);
+    currentResNode = $("ais-current-res");
+
+    callAPI(chatHistory, {
+      onChunk(full) {
+        fullText = full;
+        if (currentResNode) {
+          currentResNode.innerHTML = renderMd(full);
+          const b = $("ais-body");
+          if (b) b.scrollTop = b.scrollHeight;
+        }
+      },
+      onDone(full) {
+        streaming = false;
+        setLoading(false);
+        fullText = full;
+        if (currentResNode) {
+          currentResNode.innerHTML = renderMd(full || "(AI returned empty content)");
+          currentResNode.classList.remove("ais-cursor");
+          currentResNode.removeAttribute("id");
+        }
+        chatHistory.push({ role: "assistant", content: full });
+        showChatMode();
+        positionMainPanelBasedOnFab();
+      },
+      onError(err) {
+        streaming = false;
+        setLoading(false);
+        setBody(`<div class="ais-err">❌ ${esc(err)}</div>`);
+        $("ais-run").style.display = "";
+        $("ais-run").textContent = "🔄 Re-summarize";
+      },
+    });
+  }
+
+  function doFollowUp() {
+    if (streaming) return;
+    const inputEl = $("ais-chat-input");
+    const question = inputEl.value.trim();
+    if (!question) return;
+
+    inputEl.value = "";
+    streaming = true;
+    fullText = "";
+    setLoading(true);
+    const b = $("ais-body");
+    b.insertAdjacentHTML(
+      "beforeend",
+      `<div class="ais-user-msg">👤 ${esc(question)}</div><div id="ais-current-res" class="ais-res ais-cursor">Thinking...</div>`,
+    );
+    currentResNode = $("ais-current-res");
+    b.scrollTop = b.scrollHeight;
+    chatHistory.push({ role: "user", content: question });
+
+    callAPI(chatHistory, {
+      onChunk(full) {
+        fullText = full;
+        if (currentResNode) {
+          currentResNode.innerHTML = renderMd(full);
+          if (b) b.scrollTop = b.scrollHeight;
+        }
+      },
+      onDone(full) {
+        streaming = false;
+        setLoading(false);
+        fullText = full;
+        if (currentResNode) {
+          currentResNode.innerHTML = renderMd(full || "(AI returned empty content)");
+          currentResNode.classList.remove("ais-cursor");
+          currentResNode.removeAttribute("id");
+          if (b) b.scrollTop = b.scrollHeight;
+        }
+        chatHistory.push({ role: "assistant", content: full });
+        showChatMode();
+      },
+      onError(err) {
+        streaming = false;
+        setLoading(false);
+        if (currentResNode) {
+          currentResNode.outerHTML = `<div class="ais-err" style="margin-top:10px;">❌ ${esc(err)}</div>`;
+          if (b) b.scrollTop = b.scrollHeight;
+        }
+        chatHistory.pop();
+        inputEl.value = question;
+        showChatMode();
+      },
+    });
+  }
+
+  /* ================================================
+       Init
+    ================================================ */
+  async function init() {
+    const wrap = document.createElement("div");
+    wrap.id = "ais-fab-wrap";
+    const fab = document.createElement("button");
+    fab.id = "ais-fab";
+    fab.title = "AI Content Summary";
+    fab.textContent = "📍";
+    Object.assign(fab.style, { position: "absolute" });
+
+    const stored = await chrome.storage.local.get("fab_position");
+    const pos = stored.fab_position;
+    if (pos && pos.xRatio !== undefined && pos.yRatio !== undefined) {
+      fab.style.left = pos.xRatio * window.innerWidth + "px";
+      fab.style.top = pos.yRatio * window.innerHeight + "px";
+    } else {
+      fab.style.right = "22px";
+      fab.style.bottom = "22px";
+    }
+    wrap.appendChild(fab);
+    document.body.appendChild(wrap);
+
+    const snapFab = () => {
+      if (window.snapSide === "left")
+        fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
+      else
+        fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW() + "px";
+    };
+
+    window.addEventListener("resize", async () => {
+      const got = await chrome.storage.local.get("fab_position");
+      const p = got.fab_position;
+      if (!p || p.xRatio === undefined) return;
+      fab.style.transition = "none";
+      fab.style.top = p.yRatio * window.innerHeight + "px";
+      window.snapSide = p.xRatio < 0.5 ? "left" : "right";
+      snapFab();
+    });
+
+    setTimeout(() => {
+      const rect = fab.getBoundingClientRect();
+      fab.style.transition = "none";
+      window.snapSide = rect.left < window.innerWidth / 2 ? "left" : "right";
+      snapFab();
+    }, 50);
+
+    const mainPanel = createMainPanel();
+    document.body.appendChild(mainPanel);
+
+    bindFabEvents(fab);
+    bindMainEvents();
+    makeDraggable("ais-main");
+  }
+
+  /* ================================================
+       Messages from popup / context menu
+    ================================================ */
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === "open-and-summarize") {
+      panelOpen = true;
+      positionMainPanelBasedOnFab();
+      toggle("ais-main", true);
+      doSummary();
+    } else if (msg?.type === "open-panel") {
+      panelOpen = true;
+      positionMainPanelBasedOnFab();
+      toggle("ais-main", true);
+    }
+  });
+
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", init);
+  else init();
 })();

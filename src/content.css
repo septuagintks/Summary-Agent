@@ -1,12 +1,16 @@
 @keyframes ais-spin { to { transform: rotate(360deg); } }
 @keyframes ais-blink { 50% { opacity: 0; } }
+@keyframes ais-ti { from { opacity: 0; transform: translateY(8px); } }
+@keyframes ais-fab-click { 0% { transform: scale(.88); } 100% { transform: scale(1); } }
 
 .ais-off {
   opacity: 0 !important;
   pointer-events: none !important;
   transform: translateY(16px) scale(.96) !important;
+  filter: blur(0.4px) !important;
 }
 
+/* ---------- Floating button ---------- */
 #ais-fab-wrap {
   position: fixed;
   inset: 0;
@@ -31,11 +35,23 @@
   color: #fff;
   font-size: 24px;
   box-shadow: 1px 4px 18px rgba(125, 125, 125, .6);
-  transition: transform .26s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .26s ease;
+  transition: transform .26s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .26s ease, left .26s ease, top .26s ease;
+  will-change: transform, left, top;
   user-select: none;
 }
-#ais-fab:hover { transform: scale(1.08); box-shadow: 0 8px 28px rgba(130, 130, 130, .35); }
+#ais-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 8px 28px rgba(130, 130, 130, .35);
+}
+#ais-fab.ais-fab-pressing {
+  transform: scale(.88) !important;
+  transition: transform .12s ease-out !important;
+}
+#ais-fab.ais-fab-clicking {
+  animation: ais-fab-click 0.24s ease-out forwards;
+}
 
+/* ---------- Main panel ---------- */
 #ais-main {
   position: fixed;
   right: 22px;
@@ -48,7 +64,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: opacity .32s cubic-bezier(.21, .61, .35, 1), transform .32s cubic-bezier(.21, .61, .35, 1);
+  transition: opacity .32s cubic-bezier(.21, .61, .35, 1), transform .32s cubic-bezier(.21, .61, .35, 1), box-shadow .24s ease;
   transform-origin: top right;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
@@ -62,6 +78,7 @@
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: #fff;
   flex-shrink: 0;
+  cursor: move;
   user-select: none;
 }
 .ais-hd-title { flex: 1; font-size: 14px; font-weight: 600; }
@@ -74,8 +91,10 @@
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
+  transition: background .15s, transform .1s;
 }
 .ais-hbtn:hover { background: rgba(255, 255, 255, .38); }
+.ais-hbtn:active { transform: scale(.88); }
 
 .ais-meta {
   padding: 6px 14px;
@@ -86,6 +105,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 .ais-body {
   flex: 1;
@@ -93,9 +113,27 @@
   padding: 14px;
   min-height: 160px;
   max-height: 440px;
+  scroll-behavior: smooth;
 }
-.ais-ph { color: #9ca3af; text-align: center; padding: 32px 12px; line-height: 1.8; font-size: 13px; }
-.ais-loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #6366f1; padding: 32px; font-size: 13px; }
+.ais-body::-webkit-scrollbar { width: 4px; }
+.ais-body::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 4px; }
+
+.ais-ph {
+  color: #9ca3af;
+  text-align: center;
+  padding: 32px 12px;
+  line-height: 1.8;
+  font-size: 13px;
+}
+.ais-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #6366f1;
+  padding: 32px;
+  font-size: 13px;
+}
 .ais-spinner {
   width: 20px;
   height: 20px;
@@ -103,8 +141,40 @@
   border: 2px solid #e0e7ff;
   border-top-color: #6366f1;
   animation: ais-spin .7s linear infinite;
+  flex-shrink: 0;
 }
-.ais-res { line-height: 1.8; color: #1f2937; font-size: 13.5px; word-break: break-word; white-space: pre-wrap; }
+
+.ais-res {
+  line-height: 1.8;
+  color: #1f2937;
+  font-size: 13.5px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+.ais-res p { margin: 5px 0; }
+.ais-res .ais-h {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.ais-res .ais-ul {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+.ais-res .ais-ul li { margin: 3px 0; }
+.ais-res .ais-code {
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.ais-cursor::after {
+  content: '▊';
+  color: #6366f1;
+  animation: ais-blink .8s step-end infinite;
+}
 .ais-err {
   background: #fef2f2;
   border-left: 3px solid #f87171;
@@ -112,9 +182,94 @@
   padding: 12px 14px;
   border-radius: 8px;
   font-size: 13px;
+  line-height: 1.6;
 }
 
-.ais-ft { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #f3f4f6; }
-.ais-btn { flex: 1; padding: 8px; border: none; border-radius: 9px; font-size: 13px; font-weight: 500; cursor: pointer; }
-.ais-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; }
+.ais-ft {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+.ais-btn {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+}
+.ais-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, .3);
+}
+.ais-primary:hover { opacity: .88; transform: translateY(-1px); }
+.ais-primary:active { transform: scale(.93) !important; opacity: 1; }
+.ais-secondary { background: #f3f4f6; color: #374151; }
+.ais-secondary:hover { background: #e5e7eb; }
+.ais-secondary:active { transform: scale(.93); }
 .ais-danger { background: #fee2e2; color: #dc2626; }
+.ais-danger:hover { background: #fecaca; }
+.ais-danger:active { transform: scale(.93); }
+
+.ais-chat-wrap {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+}
+.ais-chat-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111;
+  outline: none;
+  background: #fafafa;
+  transition: border-color .15s;
+}
+.ais-chat-input:focus { border-color: #6366f1; background: #fff; }
+.ais-btn-square {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.ais-user-msg {
+  background: #f3f4f6;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 16px 0 8px;
+  font-size: 13px;
+  color: #374151;
+  word-break: break-word;
+  border-left: 3px solid #9ca3af;
+}
+
+/* ---------- Toast ---------- */
+.ais-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 86px;
+  z-index: 2147483645;
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+  font-family: system-ui, -apple-system, sans-serif;
+  animation: ais-ti .25s ease;
+  pointer-events: none;
+  transition: opacity .3s;
+}
