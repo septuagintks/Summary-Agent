@@ -286,116 +286,229 @@
   }
 
   /* ================================================
-       Fab events: drag, snap, hover pop-out, click toggle
+       Keep the panel inside the viewport as its height
+       changes (streaming content grows the body).
     ================================================ */
+  function installPanelViewportClamp(panel) {
+    let pending = false;
+    const clamp = () => {
+      pending = false;
+      if (panel.classList.contains("ais-off")) return;
+      const rect = panel.getBoundingClientRect();
+      const maxTop = window.innerHeight - rect.height - MARGIN;
+      const minTop = MARGIN;
+      // Read current top from inline style if present, else use rect.top.
+      const curTop = parseFloat(panel.style.top);
+      const baseTop = Number.isFinite(curTop) ? curTop : rect.top;
+      let targetTop = baseTop;
+      if (baseTop > maxTop) targetTop = Math.max(minTop, maxTop);
+      if (targetTop < minTop) targetTop = minTop;
+      if (Math.abs(targetTop - baseTop) > 0.5) {
+        panel.style.top = targetTop + "px";
+      }
+    };
+    const schedule = () => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(clamp);
+    };
+
+    try {
+      new ResizeObserver(schedule).observe(panel);
+    } catch {}
+    window.addEventListener("resize", schedule);
+    return schedule;
+  }
+
+  /* ================================================
+       FAB controller (state machine).
+       States: idle | pressing | dragging | hovering | snapping
+       - All position/transition writes go through fab.style here.
+       - The CSS does NOT animate `left`/`top`; only JS does, scoped per move.
+       - Snap is a single one-shot transition guarded by `snapping`, so a
+         late mouseleave/mouseenter cannot restart it midway.
+    ================================================ */
+  const FAB_EASE_SNAP = "cubic-bezier(0.16, 0.84, 0.32, 1.08)"; // slow→fast→tiny overshoot
+  const FAB_EASE_PEEK = "cubic-bezier(0.22, 1, 0.36, 1)";       // gentle ease-out for hover
+  const FAB_DUR_SNAP = 420;
+  const FAB_DUR_PEEK = 240;
+  const FAB_DRAG_DUR = 80;
+
   function bindFabEvents(fab) {
     const DRAG_THRESHOLD = 8;
-    let isDragging = false, hasMoved = false;
-    const offset = { x: 0, y: 0 };
-    const startPos = { x: 0, y: 0 };
+    let state = "idle"; // idle | pressing | dragging | hovering | snapping
+    let pointerId = null;
+    let downX = 0, downY = 0;
+    let offX = 0, offY = 0;
+    let snapEndTimer = null;
+    let leaveTimer = null;
 
-    fab.addEventListener("mousedown", (e) => {
-      isDragging = true;
-      hasMoved = false;
-      const rect = fab.getBoundingClientRect();
-      offset.x = e.clientX - rect.left;
-      offset.y = e.clientY - rect.top;
-      startPos.x = e.clientX;
-      startPos.y = e.clientY;
-      fab.style.transition = "none";
-    });
+    const snapLeftX = () => -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN;
+    const snapRightX = () => window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW();
+    const peekLeftX = () => 15;
+    const peekRightX = () => window.innerWidth - fab.offsetWidth - 15;
+    const currentSide = () => {
+      const r = fab.getBoundingClientRect();
+      return r.left + r.width / 2 < window.innerWidth / 2 ? "left" : "right";
+    };
 
-    document.addEventListener("mousemove", (e) => {
-      if (!isDragging) return;
-      const dx = e.clientX - startPos.x, dy = e.clientY - startPos.y;
-      if (!hasMoved && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-        hasMoved = true;
-        fab.style.transition = "all 0.12s ease-out";
-        fab.style.left = e.clientX - offset.x + "px";
-        fab.style.top = e.clientY - offset.y + "px";
-        return;
-      }
-      if (!hasMoved) return;
-      fab.style.transition = "none";
+    function setTransition(value) {
+      // We own these properties from JS — write the literal string so it
+      // can be cleared with `none` and not merged with CSS shorthand.
+      fab.style.transition = value;
+    }
 
-      let left = Math.max(10, Math.min(window.innerWidth - fab.offsetWidth - 10, e.clientX - offset.x));
-      let top = Math.max(10, Math.min(window.innerHeight - fab.offsetHeight - 10, e.clientY - offset.y));
-      fab.style.left = left + "px";
-      fab.style.top = top + "px";
+    function animateTo(x, y, dur, ease, onDone) {
+      setTransition(`left ${dur}ms ${ease}, top ${dur}ms ${ease}`);
+      fab.style.left = x + "px";
+      if (y != null) fab.style.top = y + "px";
       fab.style.right = "auto";
       fab.style.bottom = "auto";
-    });
+      if (snapEndTimer) { clearTimeout(snapEndTimer); snapEndTimer = null; }
+      snapEndTimer = setTimeout(() => {
+        snapEndTimer = null;
+        setTransition("none");
+        onDone?.();
+      }, dur + 30);
+    }
 
-    document.addEventListener("mouseup", () => {
-      if (!isDragging) return;
-      isDragging = false;
-      if (!hasMoved) return;
+    function startSnap() {
+      state = "snapping";
+      window.snapSide = currentSide();
+      const targetX = window.snapSide === "left" ? snapLeftX() : snapRightX();
+      animateTo(targetX, null, FAB_DUR_SNAP, FAB_EASE_SNAP, () => {
+        state = "idle";
+      });
+    }
+
+    function startPeek() {
+      // Called when the pointer enters the fab while it's resting (snapped).
+      state = "hovering";
+      const targetX = currentSide() === "left" ? peekLeftX() : peekRightX();
+      animateTo(targetX, null, FAB_DUR_PEEK, FAB_EASE_PEEK);
+    }
+
+    function endPeek() {
+      // After hover, snap back to edge with a softer curve (no overshoot).
+      state = "snapping";
+      const targetX = currentSide() === "left" ? snapLeftX() : snapRightX();
+      animateTo(targetX, null, FAB_DUR_PEEK + 60, FAB_EASE_PEEK, () => {
+        state = "idle";
+      });
+    }
+
+    /* ---- Pointer interaction (replaces mousedown/mousemove/mouseup mix) ---- */
+    fab.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      // Cancel any in-flight snap/peek; we own the fab now.
+      if (snapEndTimer) { clearTimeout(snapEndTimer); snapEndTimer = null; }
+      if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+
+      state = "pressing";
+      pointerId = e.pointerId;
+      try { fab.setPointerCapture(pointerId); } catch {}
 
       const rect = fab.getBoundingClientRect();
-      const isLeft = rect.left < window.innerWidth / 2;
-      fab.style.transition = "all 0.35s cubic-bezier(0.25, 1.4, 0.4, 1)";
-      fab.style.left =
-        (isLeft
-          ? -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN
-          : window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW()) + "px";
+      offX = e.clientX - rect.left;
+      offY = e.clientY - rect.top;
+      downX = e.clientX;
+      downY = e.clientY;
+      // Freeze current position; from here on we drive transitions.
+      fab.style.left = rect.left + "px";
       fab.style.top = rect.top + "px";
+      fab.style.right = "auto";
+      fab.style.bottom = "auto";
+      setTransition("transform .12s ease-out");
+      fab.classList.add("ais-fab-pressing");
+    });
 
+    fab.addEventListener("pointermove", (e) => {
+      if (state !== "pressing" && state !== "dragging") return;
+      const dx = e.clientX - downX, dy = e.clientY - downY;
+      if (state === "pressing") {
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        state = "dragging";
+        fab.classList.remove("ais-fab-pressing");
+        setTransition(`left ${FAB_DRAG_DUR}ms ease-out, top ${FAB_DRAG_DUR}ms ease-out`);
+      }
+      const left = Math.max(10, Math.min(window.innerWidth - fab.offsetWidth - 10, e.clientX - offX));
+      const top = Math.max(10, Math.min(window.innerHeight - fab.offsetHeight - 10, e.clientY - offY));
+      fab.style.left = left + "px";
+      fab.style.top = top + "px";
+    });
+
+    function releasePointer() {
+      if (pointerId != null) {
+        try { fab.releasePointerCapture(pointerId); } catch {}
+        pointerId = null;
+      }
+    }
+
+    fab.addEventListener("pointerup", (e) => {
+      if (state !== "pressing" && state !== "dragging") {
+        releasePointer();
+        return;
+      }
+      const wasDragging = state === "dragging";
+      releasePointer();
+      fab.classList.remove("ais-fab-pressing");
+
+      if (!wasDragging) {
+        // Click: toggle the panel. No snap, no peek interference.
+        state = "idle";
+        setTransition("none");
+        fab.classList.remove("ais-fab-clicking");
+        // force reflow so the animation restarts
+        void fab.offsetWidth;
+        fab.classList.add("ais-fab-clicking");
+        fab.addEventListener("animationend",
+          () => fab.classList.remove("ais-fab-clicking"),
+          { once: true });
+        panelOpen = !panelOpen;
+        if (panelOpen) positionMainPanelBasedOnFab();
+        toggle("ais-main", panelOpen);
+        return;
+      }
+
+      // Dragging → persist + snap (single animation, not interruptible
+      // by pointerleave because we suppress that path in `snapping` state).
+      const rect = fab.getBoundingClientRect();
       chrome.storage.local.set({
         fab_position: {
           xRatio: rect.left / window.innerWidth,
           yRatio: rect.top / window.innerHeight,
         },
       });
-      window.snapSide = isLeft ? "left" : "right";
+      startSnap();
     });
 
-    // Hover pop-out
-    let isEntering = false, enterTimer = null, leaveTimer = null;
+    fab.addEventListener("pointercancel", () => {
+      releasePointer();
+      if (state === "dragging") startSnap();
+      else { state = "idle"; setTransition("none"); }
+      fab.classList.remove("ais-fab-pressing");
+    });
 
-    fab.addEventListener("mousedown", () => fab.classList.add("ais-fab-pressing"));
-    document.addEventListener(
-      "mouseup",
-      () => fab.classList.remove("ais-fab-pressing"),
-      { capture: true },
-    );
-
-    fab.addEventListener("mouseenter", () => {
+    /* ---- Hover peek (only when idle) ---- */
+    fab.addEventListener("pointerenter", (e) => {
+      // Ignore the synthetic enter we get after a touch/pointer release.
+      if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+      if (state !== "idle") return;
       if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
-      if (enterTimer) clearTimeout(enterTimer);
-      isEntering = true;
-      const rect = fab.getBoundingClientRect();
-      fab.style.transition = "all 0.25s ease-out";
-      if (rect.left < window.innerWidth / 2) fab.style.left = "15px";
-      else fab.style.left = window.innerWidth - fab.offsetWidth - 15 + "px";
-      enterTimer = setTimeout(() => { isEntering = false; }, 350);
+      startPeek();
     });
 
-    fab.addEventListener("mouseleave", () => {
-      if (isDragging || isEntering) return;
+    fab.addEventListener("pointerleave", (e) => {
+      if (e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+      if (state !== "hovering") return;
+      // Short debounce so users moving along the edge don't trigger
+      // snap-back/peek-out flicker.
+      if (leaveTimer) clearTimeout(leaveTimer);
       leaveTimer = setTimeout(() => {
         leaveTimer = null;
-        const rect = fab.getBoundingClientRect();
-        fab.style.transition = "all 0.3s cubic-bezier(0.25, 1.4, 0.4, 1)";
-        if (rect.left < window.innerWidth / 2)
-          fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
-        else
-          fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW() + "px";
-      }, 120);
-    });
-
-    fab.addEventListener("click", (e) => {
-      if (hasMoved) { e.preventDefault(); e.stopPropagation(); return; }
-      fab.classList.remove("ais-fab-clicking");
-      void fab.offsetWidth;
-      fab.classList.add("ais-fab-clicking");
-      fab.addEventListener(
-        "animationend",
-        () => fab.classList.remove("ais-fab-clicking"),
-        { once: true },
-      );
-      panelOpen = !panelOpen;
-      if (panelOpen) positionMainPanelBasedOnFab();
-      toggle("ais-main", panelOpen);
+        if (state !== "hovering") return;
+        endPeek();
+      }, 100);
     });
   }
 
@@ -599,29 +712,30 @@
     wrap.appendChild(fab);
     document.body.appendChild(wrap);
 
-    const snapFab = () => {
-      if (window.snapSide === "left")
-        fab.style.left = -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN + "px";
-      else
-        fab.style.left = window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW() + "px";
+    // Initial placement: snap to nearest edge without animation.
+    const snapInstant = () => {
+      const rect = fab.getBoundingClientRect();
+      const isLeft = rect.left + rect.width / 2 < window.innerWidth / 2;
+      window.snapSide = isLeft ? "left" : "right";
+      fab.style.transition = "none";
+      fab.style.left =
+        (isLeft
+          ? -(fab.offsetWidth - SNAP_PEEK_L) + MARGIN
+          : window.innerWidth - SNAP_PEEK_R - MARGIN - scrollbarW()) + "px";
     };
 
     window.addEventListener("resize", async () => {
       const got = await chrome.storage.local.get("fab_position");
       const p = got.fab_position;
-      if (!p || p.xRatio === undefined) return;
-      fab.style.transition = "none";
-      fab.style.top = p.yRatio * window.innerHeight + "px";
-      window.snapSide = p.xRatio < 0.5 ? "left" : "right";
-      snapFab();
+      if (p && p.yRatio !== undefined) {
+        fab.style.transition = "none";
+        fab.style.top = p.yRatio * window.innerHeight + "px";
+      }
+      snapInstant();
     });
 
-    setTimeout(() => {
-      const rect = fab.getBoundingClientRect();
-      fab.style.transition = "none";
-      window.snapSide = rect.left < window.innerWidth / 2 ? "left" : "right";
-      snapFab();
-    }, 50);
+    // Wait one frame so fab.offsetWidth is measured correctly.
+    requestAnimationFrame(snapInstant);
 
     const mainPanel = createMainPanel();
     document.body.appendChild(mainPanel);
@@ -629,6 +743,7 @@
     bindFabEvents(fab);
     bindMainEvents();
     makeDraggable("ais-main");
+    installPanelViewportClamp(mainPanel);
   }
 
   /* ================================================

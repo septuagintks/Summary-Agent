@@ -35,7 +35,7 @@
   color: #fff;
   font-size: 24px;
   box-shadow: 1px 4px 18px rgba(125, 125, 125, .6);
-  transition: transform .26s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .26s ease, left .26s ease, top .26s ease;
+  transition: transform .26s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .26s ease;
   will-change: transform, left, top;
   user-select: none;
 }
