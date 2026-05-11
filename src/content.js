@@ -454,7 +454,7 @@
     let hoverInTimer = null;
     let hoverOutTimer = null;
     let pointerMoveScheduled = false;
-    let suppressHoverUntilPointerMove = false;
+    let pressStartedFromHover = false;
 
     // Symmetric geometry: viewport-edge X positions.
     // Right side uses `viewportRight()` (excludes scrollbar) so peek
@@ -544,7 +544,6 @@
     function pointerInDismissZone(x, y) { return inBox(x, y, dismissZone()); }
 
     function evaluateHover() {
-      if (suppressHoverUntilPointerMove) return;
       if (state !== "idle" && state !== "hovering") return;
       const x = lastPointer.x, y = lastPointer.y;
       if (state === "idle") {
@@ -583,10 +582,8 @@
 
     document.addEventListener("pointermove", (e) => {
       if (e.pointerType && e.pointerType !== "mouse" && e.pointerType !== "pen") return;
-      const moved = e.clientX !== lastPointer.x || e.clientY !== lastPointer.y;
       lastPointer.x = e.clientX;
       lastPointer.y = e.clientY;
-      if (moved) suppressHoverUntilPointerMove = false;
       if (pointerMoveScheduled) return;
       pointerMoveScheduled = true;
       requestAnimationFrame(() => {
@@ -599,10 +596,6 @@
       state = "idle";
       // Run hit test once so a pointer parked on the fab gets peeked.
       evaluateHover();
-    }
-
-    function transitionToIdleWithoutHover() {
-      state = "idle";
     }
 
     function startSnap() {
@@ -631,6 +624,7 @@
       if (snapEndTimer) { clearTimeout(snapEndTimer); snapEndTimer = null; }
       clearHoverTimers();
 
+      pressStartedFromHover = state === "hovering";
       state = "pressing";
       pointerId = e.pointerId;
       try { fab.setPointerCapture(pointerId); } catch {}
@@ -699,10 +693,9 @@
           maybeAutoSummarize();
         }
         toggle("ais-main", panelOpen);
-        suppressHoverUntilPointerMove = true;
-        window.snapSide = currentSide();
-        const targetX = window.snapSide === "left" ? snapLeftX() : snapRightX();
-        animateTo(targetX, null, FAB_DUR_PEEK_OUT, FAB_EASE_PEEK, transitionToIdleWithoutHover);
+        state = pressStartedFromHover ? "hovering" : "idle";
+        pressStartedFromHover = false;
+        evaluateHover();
         return;
       }
 
@@ -713,6 +706,7 @@
           yRatio: layoutTop() / window.innerHeight,
         },
       });
+      pressStartedFromHover = false;
       startSnap();
     });
 
@@ -720,6 +714,7 @@
       releasePointer();
       if (state === "dragging") startSnap();
       else { state = "idle"; setTransition("none"); }
+      pressStartedFromHover = false;
       fab.classList.remove("ais-fab-pressing");
     });
   }

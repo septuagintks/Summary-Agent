@@ -22,6 +22,7 @@
   min-width: 0;
   max-width: none;
   min-height: 0;
+  height: auto;
   margin: 0;
 }
 
@@ -96,6 +97,7 @@
   transform-origin: top right;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
+  line-height: normal;
 }
 
 .ais-hd {
@@ -103,19 +105,23 @@
   align-items: center;
   gap: 6px;
   padding: 12px 14px;
+  min-height: 46px;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: #fff;
   flex-shrink: 0;
   cursor: move;
   user-select: none;
 }
-.ais-hd-title { flex: 1; font-size: 14px; font-weight: 600; }
+.ais-hd-title { flex: 1; font-size: 14px; font-weight: 600; line-height: 1.2; min-width: 0; }
 .ais-hbtn {
   background: rgba(255, 255, 255, .22);
   border: none;
   color: #fff;
   border-radius: 7px;
   padding: 4px 9px;
+  height: 23px;
+  min-height: 23px;
+  max-height: 23px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
