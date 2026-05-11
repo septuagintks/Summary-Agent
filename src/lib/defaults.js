@@ -6,6 +6,8 @@ export const DEFAULTS = {
   temperature: 0.7,
   stream: true,
   maxContentLength: 16000,
+  // UI language. Supported: "en", "zh".
+  language: "en",
   // "off"        : do nothing on open
   // "on-open"    : start summarizing when the user opens the panel
   // "implicit"   : summarize in the background as soon as the page loads;

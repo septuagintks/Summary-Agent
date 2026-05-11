@@ -1,15 +1,40 @@
 import { DEFAULTS, PRESETS } from "../src/lib/defaults.js";
 import { Cfg } from "../src/lib/storage.js";
+import { SUPPORTED_LANGS, LANG_LABELS, makeT } from "../src/lib/i18n.js";
 
 const $ = (id) => document.getElementById(id);
 
-const MODE_HINTS = {
-  "off": "Opening the panel waits for you to click Start Summary.",
-  "on-open": "Clicking the floating button opens the panel and immediately starts summarizing.",
-  "implicit": "Summarization runs in the background as soon as the page finishes loading. Opening the panel shows progress or the finished result.",
-};
-
+let currentLang = "en";
 let currentMode = "off";
+let t = makeT(currentLang);
+
+function applyI18n() {
+  document.documentElement.lang = currentLang === "zh" ? "zh-CN" : "en";
+  document.title = t("opt.title");
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    const key = el.dataset.i18n;
+    const text = t(key);
+    if (text != null) el.textContent = text;
+  }
+  setModeHint(currentMode);
+}
+
+function setLanguage(lang) {
+  currentLang = SUPPORTED_LANGS.includes(lang) ? lang : "en";
+  t = makeT(currentLang);
+  applyI18n();
+}
+
+function renderLanguageOptions() {
+  const sel = $("f-lang");
+  sel.innerHTML = "";
+  for (const code of SUPPORTED_LANGS) {
+    const o = document.createElement("option");
+    o.value = code;
+    o.textContent = LANG_LABELS[code];
+    sel.appendChild(o);
+  }
+}
 
 function setMode(mode) {
   currentMode = mode;
@@ -17,7 +42,13 @@ function setMode(mode) {
     btn.classList.toggle("active", btn.dataset.value === mode);
     btn.setAttribute("aria-checked", btn.dataset.value === mode ? "true" : "false");
   }
-  $("f-mode-hint").textContent = MODE_HINTS[mode] || "";
+  setModeHint(mode);
+}
+function setModeHint(mode) {
+  const key = mode === "on-open" ? "opt.mode.hint.onOpen" :
+              mode === "implicit" ? "opt.mode.hint.implicit" :
+              "opt.mode.hint.off";
+  $("f-mode-hint").textContent = t(key);
 }
 
 function fillForm(cfg) {
@@ -31,6 +62,8 @@ function fillForm(cfg) {
   $("f-sys").value = cfg.systemPrompt ?? "";
   $("f-prompt").value = cfg.userPrompt ?? "";
   setMode(cfg.summarizeMode || "off");
+  $("f-lang").value = cfg.language || "en";
+  setLanguage(cfg.language || "en");
 }
 
 function renderPresets() {
@@ -70,9 +103,15 @@ function bindSegmented() {
   });
 }
 
+function bindLanguage() {
+  $("f-lang").addEventListener("change", (e) => setLanguage(e.target.value));
+}
+
 async function init() {
+  renderLanguageOptions();
   renderPresets();
   bindSegmented();
+  bindLanguage();
   fillForm(await Cfg.get());
 }
 
@@ -83,6 +122,7 @@ $("save").addEventListener("click", async () => {
   if (matched && key) await Cfg.setProviderKey(matched.id, key);
 
   await Cfg.set({
+    language: currentLang,
     apiUrl: url,
     apiKey: key,
     model: $("f-model").value.trim(),
@@ -94,14 +134,14 @@ $("save").addEventListener("click", async () => {
     systemPrompt: $("f-sys").value,
     userPrompt: $("f-prompt").value,
   });
-  flash("✓ Saved");
+  flash(t("opt.saved"));
 });
 
 $("reset").addEventListener("click", async () => {
-  if (!confirm("Restore all default settings?")) return;
+  if (!confirm(t("opt.resetConfirm"))) return;
   await Cfg.reset();
   fillForm(DEFAULTS);
-  flash("✓ Defaults restored");
+  flash(t("opt.resetDone"));
 });
 
 function flash(text) {

@@ -22,6 +22,72 @@
   // the page has a scrollbar.
   const FAB_PEEK_VISIBLE = 18;  // px of fab visible when snapped to the edge
   const FAB_PEEK_GAP = 15;      // px from edge to fab's inner side when hovered-out
+
+  /* ================================================
+       i18n (inlined — content scripts are not modules)
+       Keep in sync with src/lib/i18n.js.
+    ================================================ */
+  const I18N = {
+    en: {
+      "panel.title":                "🤖 AI Content Summary & Chat",
+      "panel.copy":                 "📋 Copy",
+      "panel.settings":             "⚙️ Settings",
+      "panel.close":                "✕",
+      "panel.placeholder":          'Click the "Start Summary" button below.<br>AI will automatically extract and analyze current page content 📖',
+      "panel.fabTitle":             "AI Content Summary",
+      "panel.stop":                 "⏹ Stop",
+      "panel.start":                "✨ Start Summary",
+      "panel.resummarize":          "🔄 Re-summarize",
+      "panel.followupPlaceholder":  "Enter follow-up question, press Enter to send...",
+      "panel.rerunTooltip":         "Re-summarize",
+      "panel.sendTooltip":          "Send",
+      "panel.extracting":           "Extracting page content...",
+      "panel.analyzing":            "AI is analyzing...",
+      "panel.thinking":             "Thinking...",
+      "panel.extractFail":          "❌ Page content extraction failed or content is too short.",
+      "panel.metaExtracted":        (n) => `· Extracted ${n} chars`,
+      "panel.emptyReply":           "(AI returned empty content)",
+      "panel.manuallyStopped":      "Manually stopped",
+      "panel.copyNothing":          "No content to copy",
+      "panel.copied":               "✓ Copied to clipboard",
+      "panel.copyFail":             "Copy failed, please select manually",
+      "panel.apiKeyMissing":        "API key not configured; open settings.",
+    },
+    zh: {
+      "panel.title":                "🤖 AI 内容总结与对话",
+      "panel.copy":                 "📋 复制",
+      "panel.settings":             "⚙️ 设置",
+      "panel.close":                "✕",
+      "panel.placeholder":          "点击下方「开始总结」按钮<br>AI 将自动提取并分析当前页面内容 📖",
+      "panel.fabTitle":             "AI 内容总结",
+      "panel.stop":                 "⏹ 停止",
+      "panel.start":                "✨ 开始总结",
+      "panel.resummarize":          "🔄 重新总结",
+      "panel.followupPlaceholder":  "输入追问内容，回车发送…",
+      "panel.rerunTooltip":         "重新总结",
+      "panel.sendTooltip":          "发送",
+      "panel.extracting":           "正在提取页面内容…",
+      "panel.analyzing":            "AI 正在分析…",
+      "panel.thinking":             "思考中…",
+      "panel.extractFail":          "❌ 页面内容提取失败或内容过少。",
+      "panel.metaExtracted":        (n) => `· 已提取 ${n} 字`,
+      "panel.emptyReply":           "（AI 返回内容为空）",
+      "panel.manuallyStopped":      "已手动停止",
+      "panel.copyNothing":          "暂无内容可复制",
+      "panel.copied":               "✓ 已复制到剪贴板",
+      "panel.copyFail":             "复制失败，请手动选择",
+      "panel.apiKeyMissing":        "未设置 API Key，请打开设置进行配置。",
+    },
+  };
+  // English output keyword injected into the user prompt.
+  const OUTPUT_LANG_NAME = { en: "English", zh: "Chinese" };
+
+  let currentLang = "en";
+  function t(key, ...args) {
+    const table = I18N[currentLang] || I18N.en;
+    const v = table[key] ?? I18N.en[key];
+    return typeof v === "function" ? v(...args) : (v ?? key);
+  }
   const scrollbarW = () => window.innerWidth - document.documentElement.clientWidth;
   const PANEL_W = 420;
   const MARGIN = 10;
@@ -193,26 +259,36 @@
     panel.className = "ais-off";
     panel.innerHTML = `
       <div class="ais-hd">
-        <span class="ais-hd-title">🤖 AI Content Summary & Chat</span>
-        <button class="ais-hbtn" id="ais-copy">📋 Copy</button>
-        <button class="ais-hbtn" id="ais-cfg-open">⚙️ Settings</button>
-        <button class="ais-hbtn" id="ais-main-close">✕</button>
+        <span class="ais-hd-title" data-i18n="panel.title"></span>
+        <button class="ais-hbtn" id="ais-copy"     data-i18n="panel.copy"></button>
+        <button class="ais-hbtn" id="ais-cfg-open" data-i18n="panel.settings"></button>
+        <button class="ais-hbtn" id="ais-main-close" data-i18n="panel.close"></button>
       </div>
       <div class="ais-meta" id="ais-meta">${esc(document.title)}</div>
       <div class="ais-body" id="ais-body">
-        <div class="ais-ph">Click the "Start Summary" button below<br>AI will automatically extract and analyze current page content 📖</div>
+        <div class="ais-ph" data-i18n-html="panel.placeholder"></div>
       </div>
       <div class="ais-ft" id="ais-ft-actions">
-        <button class="ais-btn ais-danger" id="ais-stop" style="display:none">⏹ Stop</button>
-        <button class="ais-btn ais-primary" id="ais-run">✨ Start Summary</button>
+        <button class="ais-btn ais-danger"  id="ais-stop" style="display:none" data-i18n="panel.stop"></button>
+        <button class="ais-btn ais-primary" id="ais-run"                       data-i18n="panel.start"></button>
         <div class="ais-chat-wrap" id="ais-chat-wrap" style="display:none;">
-          <button class="ais-btn ais-secondary ais-btn-square" id="ais-re-run" title="Re-summarize">🔄</button>
-          <input type="text" class="ais-chat-input" id="ais-chat-input" placeholder="Enter follow-up question, press Enter to send...">
-          <button class="ais-btn ais-primary ais-btn-square" id="ais-chat-send" title="Send">⬆️</button>
+          <button class="ais-btn ais-secondary ais-btn-square" id="ais-re-run"   data-i18n-title="panel.rerunTooltip">🔄</button>
+          <input type="text" class="ais-chat-input" id="ais-chat-input" data-i18n-placeholder="panel.followupPlaceholder">
+          <button class="ais-btn ais-primary ais-btn-square" id="ais-chat-send" data-i18n-title="panel.sendTooltip">⬆️</button>
         </div>
       </div>
     `;
+    applyI18nIn(panel);
     return panel;
+  }
+
+  // Apply translations to all data-i18n* attributes inside `root`.
+  // Idempotent — safe to call again when the language changes.
+  function applyI18nIn(root) {
+    for (const el of root.querySelectorAll("[data-i18n]"))            el.textContent = t(el.dataset.i18n);
+    for (const el of root.querySelectorAll("[data-i18n-html]"))       el.innerHTML   = t(el.dataset.i18nHtml);
+    for (const el of root.querySelectorAll("[data-i18n-placeholder]")) el.placeholder = t(el.dataset.i18nPlaceholder);
+    for (const el of root.querySelectorAll("[data-i18n-title]"))      el.title       = t(el.dataset.i18nTitle);
   }
 
   /* ================================================
@@ -640,10 +716,10 @@
       chrome.runtime.sendMessage({ type: "open-options" }).catch(() => {});
     });
     $("ais-copy").addEventListener("click", () => {
-      if (!fullText) { showToast("No content to copy"); return; }
+      if (!fullText) { showToast(t("panel.copyNothing")); return; }
       navigator.clipboard.writeText(fullText)
-        .then(() => showToast("✓ Copied to clipboard", "#16a34a"))
-        .catch(() => showToast("Copy failed, please select manually"));
+        .then(() => showToast(t("panel.copied"), "#16a34a"))
+        .catch(() => showToast(t("panel.copyFail")));
     });
     $("ais-stop").addEventListener("click", () => {
       abortAPI();
@@ -657,7 +733,7 @@
       }
       implicitState.attached = false;
       if (currentResNode) {
-        currentResNode.innerHTML = renderMd(fullText || "Manually stopped");
+        currentResNode.innerHTML = renderMd(fullText || t("panel.manuallyStopped"));
         currentResNode.classList.remove("ais-cursor");
         currentResNode.removeAttribute("id");
       }
@@ -667,7 +743,7 @@
         $("ais-chat-wrap").style.display = "flex";
       } else {
         $("ais-run").style.display = "";
-        $("ais-run").textContent = "🔄 Re-summarize";
+        $("ais-run").textContent = t("panel.resummarize");
       }
     });
     $("ais-run").addEventListener("click", doSummary);
@@ -682,7 +758,7 @@
        Summary / follow-up
     ================================================ */
   async function getCfg() {
-    const KEYS = ["userPrompt", "maxContentLength", "apiKey", "apiUrl"];
+    const KEYS = ["userPrompt", "maxContentLength", "apiKey", "apiUrl", "language"];
     const got = await chrome.storage.local.get(KEYS);
     return {
       userPrompt:
@@ -691,7 +767,21 @@
       maxContentLength: got.maxContentLength || 16000,
       apiKey: got.apiKey || "",
       apiUrl: got.apiUrl || "",
+      language: got.language || "en",
     };
+  }
+
+  // Build the message we send to the model. The system & user prompts
+  // are NOT translated (per design); instead we append an English line
+  // telling the model what language to write its answer in. The
+  // language name is always English ("Chinese", not "中文") so the
+  // model reliably recognizes it.
+  function buildUserMsg(userPrompt, title, content, maxLen) {
+    const langName = OUTPUT_LANG_NAME[currentLang] || "English";
+    const filled = userPrompt
+      .replace("{title}", title)
+      .replace("{content}", String(content).slice(0, maxLen));
+    return `${filled}\n\nOutput the summarize text in ${langName}.`;
   }
 
   // Implicit-summarize state. Populated by runImplicit(); read whenever
@@ -720,12 +810,10 @@
     if (!cfg.apiKey && !cfg.apiUrl.includes("{key}")) {
       // Don't auto-fire without credentials.
       implicitState.status = "error";
-      implicitState.error = "API key not configured; open settings.";
+      implicitState.error = t("panel.apiKeyMissing");
       return;
     }
-    const userMsg = cfg.userPrompt
-      .replace("{title}", title)
-      .replace("{content}", String(content).slice(0, cfg.maxContentLength));
+    const userMsg = buildUserMsg(cfg.userPrompt, title, content, cfg.maxContentLength);
     implicitState.status = "running";
     implicitState.text = "";
     implicitState.title = title;
@@ -751,7 +839,7 @@
           fullText = full;
           chatHistory = implicitState.chatHistory.slice();
           if (currentResNode) {
-            currentResNode.innerHTML = renderMd(full || "(AI returned empty content)");
+            currentResNode.innerHTML = renderMd(full || t("panel.emptyReply"));
             currentResNode.classList.remove("ais-cursor");
             currentResNode.removeAttribute("id");
           }
@@ -768,7 +856,7 @@
           setLoading(false);
           setBody(`<div class="ais-err">❌ ${esc(err)}</div>`);
           $("ais-run").style.display = "";
-          $("ais-run").textContent = "🔄 Re-summarize";
+          $("ais-run").textContent = t("panel.resummarize");
           implicitState.attached = false;
         }
       },
@@ -780,7 +868,7 @@
   function renderImplicitInPanel() {
     const metaEl = $("ais-meta");
     if (metaEl && implicitState.title) {
-      metaEl.textContent = `📄 ${implicitState.title}  ·  Extracted ${implicitState.contentLen} chars`;
+      metaEl.textContent = `📄 ${implicitState.title}  ${t("panel.metaExtracted", implicitState.contentLen)}`;
     }
 
     if (implicitState.status === "running") {
@@ -804,7 +892,7 @@
       setLoading(false);
       fullText = implicitState.text;
       chatHistory = implicitState.chatHistory.slice();
-      setBody(`<div class="ais-res">${renderMd(implicitState.text || "(empty)")}</div>`);
+      setBody(`<div class="ais-res">${renderMd(implicitState.text || t("panel.emptyReply"))}</div>`);
       currentResNode = null;
       showChatMode();
       return;
@@ -814,7 +902,7 @@
       setLoading(false);
       setBody(`<div class="ais-err">❌ ${esc(implicitState.error)}</div>`);
       $("ais-run").style.display = "";
-      $("ais-run").textContent = "🔄 Re-summarize";
+      $("ais-run").textContent = t("panel.resummarize");
     }
   }
 
@@ -843,29 +931,27 @@
     fullText = "";
     chatHistory = [];
     $("ais-run").style.display = "";
-    $("ais-run").textContent = "✨ Start Summary";
+    $("ais-run").textContent = t("panel.start");
     $("ais-chat-wrap").style.display = "none";
     setLoading(true);
-    setBody(`<div class="ais-loading"><div class="ais-spinner"></div> Extracting page content...</div>`);
+    setBody(`<div class="ais-loading"><div class="ais-spinner"></div> ${esc(t("panel.extracting"))}</div>`);
 
     const content = extractContent();
     const title = document.title;
     if (!content || content.length < 50) {
       streaming = false;
       setLoading(false);
-      setBody(`<div class="ais-err">❌ Page content extraction failed or content is too short.</div>`);
+      setBody(`<div class="ais-err">${esc(t("panel.extractFail"))}</div>`);
       $("ais-run").style.display = "";
       return;
     }
 
     const cfg = await getCfg();
     const metaEl = $("ais-meta");
-    if (metaEl) metaEl.textContent = `📄 ${title}  ·  Extracted ${content.length} chars`;
-    const userMsg = cfg.userPrompt
-      .replace("{title}", title)
-      .replace("{content}", String(content).slice(0, cfg.maxContentLength));
+    if (metaEl) metaEl.textContent = `📄 ${title}  ${t("panel.metaExtracted", content.length)}`;
+    const userMsg = buildUserMsg(cfg.userPrompt, title, content, cfg.maxContentLength);
     chatHistory.push({ role: "user", content: userMsg });
-    setBody(`<div id="ais-current-res" class="ais-res ais-cursor"><div class="ais-loading" style="padding:10px 0;"><div class="ais-spinner"></div> AI is analyzing...</div></div>`);
+    setBody(`<div id="ais-current-res" class="ais-res ais-cursor"><div class="ais-loading" style="padding:10px 0;"><div class="ais-spinner"></div> ${esc(t("panel.analyzing"))}</div></div>`);
     currentResNode = $("ais-current-res");
 
     callAPI(chatHistory, {
@@ -882,7 +968,7 @@
         setLoading(false);
         fullText = full;
         if (currentResNode) {
-          currentResNode.innerHTML = renderMd(full || "(AI returned empty content)");
+          currentResNode.innerHTML = renderMd(full || t("panel.emptyReply"));
           currentResNode.classList.remove("ais-cursor");
           currentResNode.removeAttribute("id");
         }
@@ -895,7 +981,7 @@
         setLoading(false);
         setBody(`<div class="ais-err">❌ ${esc(err)}</div>`);
         $("ais-run").style.display = "";
-        $("ais-run").textContent = "🔄 Re-summarize";
+        $("ais-run").textContent = t("panel.resummarize");
       },
     });
   }
@@ -913,7 +999,7 @@
     const b = $("ais-body");
     b.insertAdjacentHTML(
       "beforeend",
-      `<div class="ais-user-msg">👤 ${esc(question)}</div><div id="ais-current-res" class="ais-res ais-cursor">Thinking...</div>`,
+      `<div class="ais-user-msg">👤 ${esc(question)}</div><div id="ais-current-res" class="ais-res ais-cursor">${esc(t("panel.thinking"))}</div>`,
     );
     currentResNode = $("ais-current-res");
     b.scrollTop = b.scrollHeight;
@@ -932,7 +1018,7 @@
         setLoading(false);
         fullText = full;
         if (currentResNode) {
-          currentResNode.innerHTML = renderMd(full || "(AI returned empty content)");
+          currentResNode.innerHTML = renderMd(full || t("panel.emptyReply"));
           currentResNode.classList.remove("ais-cursor");
           currentResNode.removeAttribute("id");
           if (b) b.scrollTop = b.scrollHeight;
@@ -958,11 +1044,34 @@
        Init
     ================================================ */
   async function init() {
+    // Load language before any UI is built so first paint is correct.
+    const langGot = await chrome.storage.local.get("language");
+    currentLang = (langGot.language && I18N[langGot.language]) ? langGot.language : "en";
+
+    // React to options-page language changes without reloading the tab.
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes.language) return;
+      const next = changes.language.newValue;
+      if (!next || !I18N[next] || next === currentLang) return;
+      currentLang = next;
+      const fabEl = $("ais-fab");
+      if (fabEl) fabEl.title = t("panel.fabTitle");
+      const mainEl = $("ais-main");
+      if (mainEl) applyI18nIn(mainEl);
+      // If the current Re-summarize/Start text is showing, refresh it.
+      const runBtn = $("ais-run");
+      if (runBtn && !streaming) {
+        // Choose the right label based on what state we're in.
+        const showResum = chatHistory.length > 0 || implicitState.status === "done" || implicitState.status === "error";
+        runBtn.textContent = t(showResum ? "panel.resummarize" : "panel.start");
+      }
+    });
+
     const wrap = document.createElement("div");
     wrap.id = "ais-fab-wrap";
     const fab = document.createElement("button");
     fab.id = "ais-fab";
-    fab.title = "AI Content Summary";
+    fab.title = t("panel.fabTitle");
     fab.textContent = "📍";
     Object.assign(fab.style, { position: "absolute" });
 

@@ -7,55 +7,64 @@
   </head>
   <body>
     <main class="card">
-      <header><h1>⚙️ AI Summary Settings</h1></header>
+      <header>
+        <h1 data-i18n="opt.title"></h1>
+      </header>
 
       <section class="field-block">
         <div class="lbl-row">
-          <span class="lbl">Summarize mode</span>
+          <span class="lbl" data-i18n="opt.language"></span>
         </div>
-        <div class="segmented" id="f-mode" role="radiogroup" aria-label="Summarize mode">
-          <button type="button" class="seg" data-value="off" role="radio">Off</button>
-          <button type="button" class="seg" data-value="on-open" role="radio">On open</button>
-          <button type="button" class="seg" data-value="implicit" role="radio">Implicit</button>
+        <select id="f-lang" class="lang-select"></select>
+      </section>
+
+      <section class="field-block">
+        <div class="lbl-row">
+          <span class="lbl" data-i18n="opt.mode"></span>
+        </div>
+        <div class="segmented" id="f-mode" role="radiogroup">
+          <button type="button" class="seg" data-value="off"      role="radio" data-i18n="opt.mode.off"></button>
+          <button type="button" class="seg" data-value="on-open"  role="radio" data-i18n="opt.mode.onOpen"></button>
+          <button type="button" class="seg" data-value="implicit" role="radio" data-i18n="opt.mode.implicit"></button>
         </div>
         <div class="hint" id="f-mode-hint"></div>
       </section>
 
       <section class="presets" id="presets"></section>
 
-      <label>API URL
+      <label><span data-i18n="opt.apiUrl"></span>
         <input id="f-url" type="text" placeholder="https://api.openai.com/v1/chat/completions" />
       </label>
-      <label>API Key
+      <label><span data-i18n="opt.apiKey"></span>
         <input id="f-key" type="password" placeholder="sk-..." />
       </label>
-      <label>Model
+      <label><span data-i18n="opt.model"></span>
         <input id="f-model" type="text" placeholder="gpt-3.5-turbo" />
       </label>
       <div class="row">
-        <label>Max output tokens
+        <label><span data-i18n="opt.maxTokens"></span>
           <input id="f-tokens" type="number" min="100" max="8000" />
         </label>
-        <label>Max content length
+        <label><span data-i18n="opt.maxLen"></span>
           <input id="f-maxlen" type="number" min="1000" max="50000" />
         </label>
-        <label>Temperature
+        <label><span data-i18n="opt.temperature"></span>
           <input id="f-temp" type="number" step="0.1" min="0" max="2" />
         </label>
       </div>
       <label class="inline">
-        <input id="f-stream" type="checkbox" /> Stream output
+        <input id="f-stream" type="checkbox" /> <span data-i18n="opt.stream"></span>
       </label>
-      <label>System prompt
+      <label><span data-i18n="opt.sysPrompt"></span>
         <textarea id="f-sys" rows="3"></textarea>
       </label>
-      <label>User prompt <small>(variables: {title} {content})</small>
+      <label><span data-i18n="opt.userPrompt"></span> <small data-i18n="opt.userPromptVars"></small>
         <textarea id="f-prompt" rows="8"></textarea>
       </label>
 
       <footer>
-        <button id="reset" class="secondary">↩ Restore defaults</button>
-        <button id="save" class="primary">💾 Save</button>
+        <button id="reset"  class="secondary" data-i18n="opt.reset"></button>
+        <button id="save"   class="primary"   data-i18n="opt.save"></button>
         <span id="status" class="status"></span>
       </footer>
     </main>

@@ -1,3 +1,17 @@
+import { makeT } from "../lib/i18n.js";
+
+async function applyI18n() {
+  const got = await chrome.storage.local.get("language");
+  const lang = got.language || "en";
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  const t = makeT(lang);
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  document.title = t("popup.title");
+}
+applyI18n();
+
 document.getElementById("run").addEventListener("click", async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;

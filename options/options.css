@@ -122,6 +122,20 @@ textarea { resize: vertical; min-height: 70px; }
   min-height: 1.5em;
 }
 
+.lang-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111;
+  background: #fafafa;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+}
+.lang-select:focus { border-color: #6366f1; background: #fff; }
+
 .presets {
   display: flex;
   flex-wrap: wrap;
