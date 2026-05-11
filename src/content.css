@@ -10,7 +10,7 @@
   --ais-panel-bottom: 86px;
   --ais-body-max-height: 440px;
   --ais-header-height: 50px;
-  --ais-header-button-width: 84px;
+  --ais-header-button-width: 72px;
   --ais-header-button-height: 30px;
   --ais-footer-control-size: 40px;
 }
@@ -319,7 +319,7 @@
   justify-content: center;
   flex-shrink: 0;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1;
 }
 .ais-user-msg {

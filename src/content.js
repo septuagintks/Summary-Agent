@@ -94,6 +94,7 @@
   const PANEL_FAB_GAP = 15;
   const FAB_DRAG_MARGIN = 10;
   const FAB_DEFAULT_OFFSET = 22;
+  const PANEL_ANIM_TRANSITION = "transform .32s cubic-bezier(.21, .61, .35, 1), opacity .32s cubic-bezier(.21, .61, .35, 1), box-shadow .24s ease";
 
   /* ================================================
        Content extraction
@@ -205,6 +206,36 @@
     $("ais-run").style.display = "none";
     $("ais-chat-wrap").style.display = "flex";
     $("ais-chat-input").focus();
+  }
+
+  function animateMainPanelUpdate(update) {
+    const panel = $("ais-main");
+    if (!panel || panel.classList.contains("ais-off")) {
+      update?.();
+      return;
+    }
+
+    const before = panel.getBoundingClientRect();
+    update?.();
+    const after = panel.getBoundingClientRect();
+    const dx = before.left - after.left;
+    const dy = before.top - after.top;
+    const sx = after.width ? before.width / after.width : 1;
+    const sy = after.height ? before.height / after.height : 1;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) {
+      return;
+    }
+
+    panel.style.transition = "none";
+    panel.style.transformOrigin = "top left";
+    panel.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+    void panel.offsetWidth;
+    panel.style.transition = PANEL_ANIM_TRANSITION;
+    panel.style.transform = "";
+    panel.addEventListener("transitionend", () => {
+      panel.style.transition = "";
+      panel.style.transformOrigin = "";
+    }, { once: true });
   }
 
   /* ================================================
@@ -889,8 +920,10 @@
             currentResNode.removeAttribute("id");
           }
           implicitState.attached = false;
-          showChatMode();
-          positionMainPanelBasedOnFab();
+          animateMainPanelUpdate(() => {
+            showChatMode();
+            positionMainPanelBasedOnFab();
+          });
         }
       },
       onError(err) {
@@ -1018,8 +1051,10 @@
           currentResNode.removeAttribute("id");
         }
         chatHistory.push({ role: "assistant", content: full });
-        showChatMode();
-        positionMainPanelBasedOnFab();
+        animateMainPanelUpdate(() => {
+          showChatMode();
+          positionMainPanelBasedOnFab();
+        });
       },
       onError(err) {
         streaming = false;
