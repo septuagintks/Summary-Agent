@@ -89,8 +89,11 @@
     return typeof v === "function" ? v(...args) : (v ?? key);
   }
   const scrollbarW = () => window.innerWidth - document.documentElement.clientWidth;
-  const PANEL_W = 420;
-  const MARGIN = 10;
+  const VIEWPORT_MARGIN = 10;
+  const PANEL_WIDTH = 420;
+  const PANEL_FAB_GAP = 15;
+  const FAB_DRAG_MARGIN = 10;
+  const FAB_DEFAULT_OFFSET = 22;
 
   /* ================================================
        Content extraction
@@ -366,12 +369,12 @@
     const peekLeftEdge = isLeft ? FAB_PEEK_GAP : vR - fab.offsetWidth - FAB_PEEK_GAP;
     const peekRightEdge = peekLeftEdge + fab.offsetWidth;
 
-    let leftPos = isLeft ? peekRightEdge + 15 : peekLeftEdge - PANEL_W - 15;
-    leftPos = Math.max(MARGIN, Math.min(vR - PANEL_W - MARGIN, leftPos));
+    let leftPos = isLeft ? peekRightEdge + PANEL_FAB_GAP : peekLeftEdge - PANEL_WIDTH - PANEL_FAB_GAP;
+    leftPos = Math.max(VIEWPORT_MARGIN, Math.min(vR - PANEL_WIDTH - VIEWPORT_MARGIN, leftPos));
     mainPanel.style.left = leftPos + "px";
 
-    const panelHeight = mainPanel.offsetHeight || PANEL_W;
-    let topPos = Math.max(MARGIN, Math.min(window.innerHeight - panelHeight - MARGIN, fabRect.top));
+    const panelHeight = mainPanel.offsetHeight || PANEL_WIDTH;
+    let topPos = Math.max(VIEWPORT_MARGIN, Math.min(window.innerHeight - panelHeight - VIEWPORT_MARGIN, fabRect.top));
     mainPanel.style.top = topPos + "px";
   }
 
@@ -385,8 +388,8 @@
       pending = false;
       if (panel.classList.contains("ais-off")) return;
       const rect = panel.getBoundingClientRect();
-      const maxTop = window.innerHeight - rect.height - MARGIN;
-      const minTop = MARGIN;
+      const maxTop = window.innerHeight - rect.height - VIEWPORT_MARGIN;
+      const minTop = VIEWPORT_MARGIN;
       // Read current top from inline style if present, else use rect.top.
       const curTop = parseFloat(panel.style.top);
       const baseTop = Number.isFinite(curTop) ? curTop : rect.top;
@@ -673,8 +676,14 @@
         fab.classList.remove("ais-fab-pressing");
       }
       // 1:1 with the pointer. No transition during drag.
-      const left = Math.max(10, Math.min(window.innerWidth - fab.offsetWidth - 10, e.clientX - offX));
-      const top = Math.max(10, Math.min(window.innerHeight - fab.offsetHeight - 10, e.clientY - offY));
+      const left = Math.max(
+        FAB_DRAG_MARGIN,
+        Math.min(window.innerWidth - fab.offsetWidth - FAB_DRAG_MARGIN, e.clientX - offX),
+      );
+      const top = Math.max(
+        FAB_DRAG_MARGIN,
+        Math.min(window.innerHeight - fab.offsetHeight - FAB_DRAG_MARGIN, e.clientY - offY),
+      );
       fab.style.left = left + "px";
       fab.style.top = top + "px";
     });
@@ -1117,16 +1126,19 @@
       fab.style.left = pos.xRatio * window.innerWidth + "px";
       fab.style.top = pos.yRatio * window.innerHeight + "px";
     } else {
-      fab.style.right = "22px";
-      fab.style.bottom = "22px";
+      fab.style.right = FAB_DEFAULT_OFFSET + "px";
+      fab.style.bottom = FAB_DEFAULT_OFFSET + "px";
     }
     wrap.appendChild(fab);
     document.body.appendChild(wrap);
 
     // Initial placement: snap to nearest edge without animation.
-    const snapInstant = () => {
+    const snapInstant = (preserveSide = false) => {
       const rect = fab.getBoundingClientRect();
-      const isLeft = rect.left + rect.width / 2 < window.innerWidth / 2;
+      const storedSide = window.snapSide === "left" || window.snapSide === "right" ? window.snapSide : null;
+      const isLeft = preserveSide && storedSide
+        ? storedSide === "left"
+        : rect.left + rect.width / 2 < window.innerWidth / 2;
       window.snapSide = isLeft ? "left" : "right";
       fab.style.transition = "none";
       const vR = window.innerWidth - (window.innerWidth - document.documentElement.clientWidth);
@@ -1143,7 +1155,7 @@
         fab.style.transition = "none";
         fab.style.top = p.yRatio * window.innerHeight + "px";
       }
-      snapInstant();
+      snapInstant(true);
     });
 
     // Wait one frame so fab.offsetWidth is measured correctly.
