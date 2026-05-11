@@ -454,6 +454,7 @@
     let hoverInTimer = null;
     let hoverOutTimer = null;
     let pointerMoveScheduled = false;
+    let suppressHoverUntilPointerMove = false;
 
     // Symmetric geometry: viewport-edge X positions.
     // Right side uses `viewportRight()` (excludes scrollbar) so peek
@@ -466,6 +467,14 @@
     const currentSide = () => {
       const r = fab.getBoundingClientRect();
       return r.left + r.width / 2 < window.innerWidth / 2 ? "left" : "right";
+    };
+    const layoutLeft = () => {
+      const left = parseFloat(getComputedStyle(fab).left);
+      return Number.isFinite(left) ? left : fab.offsetLeft;
+    };
+    const layoutTop = () => {
+      const top = parseFloat(getComputedStyle(fab).top);
+      return Number.isFinite(top) ? top : fab.offsetTop;
     };
 
     function setTransition(value) {
@@ -535,6 +544,7 @@
     function pointerInDismissZone(x, y) { return inBox(x, y, dismissZone()); }
 
     function evaluateHover() {
+      if (suppressHoverUntilPointerMove) return;
       if (state !== "idle" && state !== "hovering") return;
       const x = lastPointer.x, y = lastPointer.y;
       if (state === "idle") {
@@ -573,8 +583,10 @@
 
     document.addEventListener("pointermove", (e) => {
       if (e.pointerType && e.pointerType !== "mouse" && e.pointerType !== "pen") return;
+      const moved = e.clientX !== lastPointer.x || e.clientY !== lastPointer.y;
       lastPointer.x = e.clientX;
       lastPointer.y = e.clientY;
+      if (moved) suppressHoverUntilPointerMove = false;
       if (pointerMoveScheduled) return;
       pointerMoveScheduled = true;
       requestAnimationFrame(() => {
@@ -587,6 +599,10 @@
       state = "idle";
       // Run hit test once so a pointer parked on the fab gets peeked.
       evaluateHover();
+    }
+
+    function transitionToIdleWithoutHover() {
+      state = "idle";
     }
 
     function startSnap() {
@@ -620,14 +636,17 @@
       try { fab.setPointerCapture(pointerId); } catch {}
 
       const rect = fab.getBoundingClientRect();
+      const baseLeft = layoutLeft();
+      const baseTop = layoutTop();
       offX = e.clientX - rect.left;
       offY = e.clientY - rect.top;
       downX = e.clientX;
       downY = e.clientY;
-      // Freeze current position immediately; cancel any in-flight animation.
+      // Freeze the layout position immediately. The visual rect includes
+      // hover/press scale, and writing it back makes clicks drift over time.
       setTransition("none");
-      fab.style.left = rect.left + "px";
-      fab.style.top = rect.top + "px";
+      fab.style.left = baseLeft + "px";
+      fab.style.top = baseTop + "px";
       fab.style.right = "auto";
       fab.style.bottom = "auto";
       fab.classList.add("ais-fab-pressing");
@@ -680,16 +699,18 @@
           maybeAutoSummarize();
         }
         toggle("ais-main", panelOpen);
-        // Don't re-evaluate hover on click — user is busy with the panel.
+        suppressHoverUntilPointerMove = true;
+        window.snapSide = currentSide();
+        const targetX = window.snapSide === "left" ? snapLeftX() : snapRightX();
+        animateTo(targetX, null, FAB_DUR_PEEK_OUT, FAB_EASE_PEEK, transitionToIdleWithoutHover);
         return;
       }
 
       // Dragging → persist + snap.
-      const rect = fab.getBoundingClientRect();
       chrome.storage.local.set({
         fab_position: {
-          xRatio: rect.left / window.innerWidth,
-          yRatio: rect.top / window.innerHeight,
+          xRatio: layoutLeft() / window.innerWidth,
+          yRatio: layoutTop() / window.innerHeight,
         },
       });
       startSnap();
