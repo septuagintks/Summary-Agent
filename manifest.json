@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Summary",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "One-click AI summary and follow-up chat on any webpage. Supports OpenAI, Anthropic, Gemini, DeepSeek and other compatible APIs.",
   "author": "Septuagint",
   "minimum_chrome_version": "114",

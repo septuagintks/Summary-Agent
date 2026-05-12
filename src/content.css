@@ -333,6 +333,40 @@
   border-left: 3px solid #9ca3af;
 }
 
+/* ---------- Follow-up option chips ([[...]] markers) ---------- */
+.ais-opt {
+  display: inline;
+  color: #4f46e5;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(99, 102, 241, .45);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+  transition: color .15s ease, background .15s ease, text-decoration-color .15s ease;
+  outline: none;
+}
+.ais-opt:hover {
+  color: #4338ca;
+  background: rgba(99, 102, 241, .08);
+  text-decoration-color: #6366f1;
+}
+.ais-opt:focus-visible {
+  background: rgba(99, 102, 241, .12);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, .35);
+}
+.ais-opt:active {
+  transform: translateY(.5px);
+  background: rgba(99, 102, 241, .16);
+}
+.ais-opt-consumed {
+  color: #9ca3af;
+  text-decoration-color: rgba(156, 163, 175, .4);
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ---------- Toast ---------- */
 .ais-toast {
   position: fixed;

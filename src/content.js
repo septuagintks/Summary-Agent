@@ -52,6 +52,7 @@
       "panel.copied":               "✓ Copied to clipboard",
       "panel.copyFail":             "Copy failed, please select manually",
       "panel.apiKeyMissing":        "API key not configured; open settings.",
+      "panel.optionFollowup":       (opt) => `The user selected this option: "${opt}". Please help the user further, and at the end of your reply keep generating option suggestions in the same [[option]] format for useful next steps.`,
     },
     zh: {
       "panel.title":                "🤖 AI 内容总结与对话",
@@ -77,6 +78,7 @@
       "panel.copied":               "✓ 已复制到剪贴板",
       "panel.copyFail":             "复制失败，请手动选择",
       "panel.apiKeyMissing":        "未设置 API Key，请打开设置进行配置。",
+      "panel.optionFollowup":       (opt) => `用户选择了这个选项：“${opt}”。请进一步帮助用户，并在每一次回复结束时继续按照 [[选项]] 格式生成用户可能需要的下一步选项。`,
     },
   };
   // English output keyword injected into the user prompt.
@@ -142,6 +144,20 @@
   /* ================================================
        Markdown rendering
     ================================================ */
+  // The source text typically contains `[[option text]]` markers the
+  // model emits at the end of a response. We turn them into clickable
+  // follow-up chips.  `data-ais-opt` carries the raw option text so the
+  // click handler can forward it to the model.
+  const OPT_RE = /\[\[([^\[\]\n]{1,120})\]\]/g;
+  function renderOptionMarkers(escaped) {
+    return escaped.replace(OPT_RE, (_m, inner) => {
+      // `inner` is already HTML-escaped (we ran the whole string through
+      // esc0 first). Put it in both data-attr and text content verbatim.
+      const attr = inner.replace(/"/g, "&quot;");
+      return `<span class="ais-opt" role="button" tabindex="0" data-ais-opt="${attr}">${inner}</span>`;
+    });
+  }
+
   function renderMd(raw) {
     const esc0 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const lines = esc0(raw).split("\n");
@@ -153,6 +169,7 @@
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*(.+?)\*/g, "<em>$1</em>")
         .replace(/`(.+?)`/g, '<code class="ais-code">$1</code>');
+      line = renderOptionMarkers(line);
 
       if (/^#{1,3} /.test(rawLine)) {
         if (inUl) { html += "</ul>"; inUl = false; }
@@ -823,10 +840,29 @@
       }
     });
     $("ais-run").addEventListener("click", doSummary);
-    $("ais-re-run").addEventListener("click", doSummary);
-    $("ais-chat-send").addEventListener("click", doFollowUp);
+    $("ais-re-run").addEventListener("click", () => doSummary());
+    $("ais-chat-send").addEventListener("click", () => doFollowUp());
     $("ais-chat-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); doFollowUp(); }
+    });
+
+    // Delegated click on option chips ([[...]] markers) anywhere in the
+    // rendered response. The chip's text is what the model wrote, so we
+    // forward it verbatim inside a language-appropriate template.
+    const body = $("ais-body");
+    const handleOpt = (e) => {
+      const chip = e.target.closest?.(".ais-opt");
+      if (!chip || streaming) return;
+      const opt = chip.dataset.aisOpt || chip.textContent || "";
+      if (!opt) return;
+      e.preventDefault();
+      // Dim all chips in the last response so users see it was handled.
+      for (const c of body.querySelectorAll(".ais-opt")) c.classList.add("ais-opt-consumed");
+      doFollowUp(t("panel.optionFollowup", opt));
+    };
+    body.addEventListener("click", handleOpt);
+    body.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") handleOpt(e);
     });
   }
 
@@ -1066,13 +1102,13 @@
     });
   }
 
-  function doFollowUp() {
+  function doFollowUp(questionOverride) {
     if (streaming) return;
     const inputEl = $("ais-chat-input");
-    const question = inputEl.value.trim();
+    const question = (questionOverride != null ? String(questionOverride) : inputEl.value).trim();
     if (!question) return;
 
-    inputEl.value = "";
+    if (questionOverride == null) inputEl.value = "";
     streaming = true;
     fullText = "";
     setLoading(true);

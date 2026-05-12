@@ -42,6 +42,7 @@ export const STRINGS = {
     "panel.copied": "✓ Copied to clipboard",
     "panel.copyFail": "Copy failed, please select manually",
     "panel.apiKeyMissing": "API key not configured; open settings.",
+    "panel.optionFollowup": (opt) => `The user selected this option: "${opt}". Please help the user further, and at the end of your reply keep generating option suggestions in the same [[option]] format for useful next steps.`,
 
     /* Options page */
     "opt.title": "⚙️ AI Summary Settings",
@@ -100,6 +101,7 @@ export const STRINGS = {
     "panel.copied": "✓ 已复制到剪贴板",
     "panel.copyFail": "复制失败，请手动选择",
     "panel.apiKeyMissing": "未设置 API Key，请打开设置进行配置。",
+    "panel.optionFollowup": (opt) => `用户选择了这个选项：“${opt}”。请进一步帮助用户，并在每一次回复结束时继续按照 [[选项]] 格式生成用户可能需要的下一步选项。`,
 
     /* Options page */
     "opt.title": "⚙️ AI 总结 设置",
