@@ -60,7 +60,7 @@ async function runCall(messages, port, signal) {
     return;
   }
 
-  const provider = detectProvider(cfg.apiUrl);
+  const provider = detectProvider(cfg.apiUrl, cfg.model);
   const req = buildRequest(cfg, messages);
 
   let res;

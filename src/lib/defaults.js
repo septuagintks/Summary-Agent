@@ -34,7 +34,7 @@ Please respond in the following format:
 };
 
 export const PRESETS = [
-  { id: "openai",     name: "OpenAI",     url: "https://api.openai.com/v1/chat/completions",                                                          model: "gpt-5.5" },
+  { id: "openai",     name: "OpenAI",     url: "https://api.openai.com/v1/responses",                                                                  model: "gpt-5.5" },
   { id: "anthropic",  name: "Anthropic",  url: "https://api.anthropic.com/v1/messages",                                                               model: "claude-opus-4.7" },
   { id: "gemini",     name: "Gemini",     url: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",           model: "gemini-3.1-pro-preview" },
   { id: "xai",        name: "xAI",        url: "https://api.x.ai/v1/chat/completions",                                                                model: "gork-4.3" },

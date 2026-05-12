@@ -1,11 +1,54 @@
-export function detectProvider(url) {
+// Models that use the Responses API (/v1/responses) instead of Chat Completions.
+const RESPONSES_API_MODEL_RE = /^gpt-5/;
+
+export function isResponsesModel(model = "") {
+  return RESPONSES_API_MODEL_RE.test(model);
+}
+
+/**
+ * @param {string} url
+ * @param {string} [model] - pass cfg.model so GPT-5 auto-routes to openai-responses
+ */
+export function detectProvider(url, model = "") {
   if (url.includes("anthropic.com")) return "anthropic";
   if (url.includes("generativelanguage.googleapis")) return "gemini";
+  // Explicit Responses API endpoint OR GPT-5 model series
+  if (url.includes("/v1/responses") || isResponsesModel(model)) return "openai-responses";
   return "openai";
 }
 
+/** Derive the correct /v1/responses URL even if the user saved the old /v1/chat/completions URL. */
+function toResponsesUrl(apiUrl) {
+  if (apiUrl.includes("/v1/responses")) return apiUrl;
+  // e.g. https://api.openai.com/v1/chat/completions → /v1/responses
+  const replaced = apiUrl.replace(/\/chat\/completions\/?$/, "/responses");
+  if (replaced !== apiUrl) return replaced;
+  // e.g. https://api.openai.com/v1  or  https://api.openai.com
+  return apiUrl.replace(/\/v1\/?$/, "/v1/responses").replace(/openai\.com\/?$/, "openai.com/v1/responses");
+}
+
 export function buildRequest(cfg, messages) {
-  const provider = detectProvider(cfg.apiUrl);
+  const provider = detectProvider(cfg.apiUrl, cfg.model);
+
+  if (provider === "openai-responses") {
+    return {
+      url: toResponsesUrl(cfg.apiUrl),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        "Cache-Control": "no-cache",
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        instructions: cfg.systemPrompt,   // replaces system message
+        input: messages,                   // same shape as chat messages
+        max_output_tokens: +cfg.maxTokens, // renamed field
+        temperature: +cfg.temperature,
+        stream: cfg.stream,
+      }),
+    };
+  }
 
   if (provider === "anthropic") {
     return {
@@ -90,6 +133,19 @@ export function parseStreamLine(provider, line) {
       const item = Array.isArray(data) ? data[0] : data;
       return item?.candidates?.[0]?.content?.parts?.[0]?.text || null;
     }
+    if (provider === "openai-responses") {
+      const json = JSON.parse(raw);
+      // Incremental text delta
+      if (json.type === "response.output_text.delta") return json.delta || null;
+      // Terminal events — stream is finished
+      if (
+        json.type === "response.completed" ||
+        json.type === "response.failed"    ||
+        json.type === "response.incomplete"
+      ) return "[DONE]";
+      return null;
+    }
+    // openai chat-completions (legacy)
     if (raw === "[DONE]") return "[DONE]";
     return JSON.parse(raw).choices?.[0]?.delta?.content || null;
   } catch {
@@ -134,6 +190,10 @@ export function parseFullResponse(provider, responseText) {
     if (provider === "gemini") {
       const item = Array.isArray(json) ? json[0] : json;
       return item?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    }
+    if (provider === "openai-responses") {
+      // Non-streaming Responses API: output[].content[].text
+      return json.output?.[0]?.content?.[0]?.text || "";
     }
     return json.choices?.[0]?.message?.content || "";
   } catch {
