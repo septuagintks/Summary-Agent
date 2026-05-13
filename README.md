@@ -13,7 +13,7 @@ API keys and settings are stored locally in chrome.storage.local.
 - Streaming AI responses through the MV3 service worker.
 - Follow-up chat after the first summary.
 - Toolbar popup action and page context-menu action.
-- UI languages supported: English, Chinese, Japanese, Korean.
+- UI languages supported: English, Chinese, Japanese, Korean, German.
 - Provider presets for OpenAI, Anthropic, Gemini, xAI, DeepSeek, and OpenRouter-compatible APIs.
 - Custom API URL, model, max tokens, temperature, stream mode, content length, system prompt, and user prompt.
 
