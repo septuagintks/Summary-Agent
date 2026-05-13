@@ -8,13 +8,13 @@
  * append "Output the summarize text in {language}." to the user prompt
  * so the model adapts on its own.
  */
-export const SUPPORTED_LANGS = ["en", "zh"];
-export const LANG_LABELS = { en: "English", zh: "简体中文" };
+export const SUPPORTED_LANGS = ["en", "zh", "ja"];
+export const LANG_LABELS = { en: "English", zh: "简体中文", ja: "日本語" };
 
 // Used inside the "Output the summarize text in {language}." line we
 // append to the user prompt. Always English keywords so the model is
 // guaranteed to recognize them.
-export const OUTPUT_LANG_NAME = { en: "English", zh: "Chinese" };
+export const OUTPUT_LANG_NAME = { en: "English", zh: "Chinese", ja: "Japanese" };
 
 export const STRINGS = {
   en: {
@@ -133,6 +133,65 @@ export const STRINGS = {
     "popup.title": "🤖 AI 总结",
     "popup.run": "✨ 总结当前页面",
     "popup.settings": "⚙️ 设置",
+  },
+
+  ja: {
+    /* Floating panel */
+    "panel.title": "🤖 AI 内容要約とチャット",
+    "panel.copy": "📋 コピー",
+    "panel.settings": "⚙️ 設定",
+    "panel.close": "✕",
+    "panel.placeholder": "下の「要約を開始」ボタンをクリックしてください。<br>AIが現在のページ内容を自動的に抽出して分析します 📖",
+    "panel.fabTitle": "AI 内容要約",
+    "panel.stop": "⏹ 停止",
+    "panel.start": "✨ 要約を開始",
+    "panel.resummarize": "🔄 再要約",
+    "panel.followupPlaceholder": "追問内容を入力し、Enterで送信...",
+    "panel.rerunTooltip": "再要約",
+    "panel.sendTooltip": "送信",
+    "panel.extracting": "ページ内容を抽出中...",
+    "panel.analyzing": "AIが分析中...",
+    "panel.thinking": "思考中...",
+    "panel.extractFail": "❌ ページ内容の抽出に失敗したか、内容が短すぎます。",
+    "panel.metaExtracted": (n) => `· ${n} 文字を抽出しました`,
+    "panel.emptyReply": "(AIが空の内容を返しました)",
+    "panel.manuallyStopped": "手動で停止しました",
+    "panel.copyNothing": "コピーする内容がありません",
+    "panel.copied": "✓ クリップボードにコピーしました",
+    "panel.copyFail": "コピーに失敗しました。手動で選択してください",
+    "panel.apiKeyMissing": "APIキーが設定されていません。設定を開いてください。",
+    "panel.optionFollowup": (opt) => `ユーザーは次のフォローアップを選択しました：「${opt}」。この内容に対して直接、簡潔に回答してください。その後、回答の最後に新しい行から始めて、次のステップの候補となる 2〜4 個の [[選択肢]] を提示してください。各選択肢は短いフレーズとし、二重の角括弧で囲み、1行に1つずつ記載してください。番号は振らないでください。`,
+
+    /* Options page */
+    "opt.title": "⚙️ AI 要約 設定",
+    "opt.language": "言語",
+    "opt.mode": "要約モード",
+    "opt.mode.off": "オフ",
+    "opt.mode.onOpen": "パネルを開く時に開始",
+    "opt.mode.implicit": "バックグラウンド実行",
+    "opt.mode.hint.off": "パネルを開いた後、「要約を開始」をクリックするまで待機します。",
+    "opt.mode.hint.onOpen": "フローティングボタンをクリックしてパネルを開くと、すぐに要約を開始します。",
+    "opt.mode.hint.implicit": "ページ読み込み完了後、バックグラウンドで要約を開始します。パネルを開くと進捗または完了結果が表示されます。",
+    "opt.apiUrl": "API URL",
+    "opt.apiKey": "API キー",
+    "opt.model": "モデル",
+    "opt.maxTokens": "最大出力トークン",
+    "opt.maxLen": "最大コンテンツ長",
+    "opt.temperature": "温度",
+    "opt.stream": "ストリーム出力",
+    "opt.sysPrompt": "システムプロンプト",
+    "opt.userPrompt": "ユーザープロンプト",
+    "opt.userPromptVars": "(変数: {title} {content})",
+    "opt.reset": "↩ デフォルトに戻す",
+    "opt.save": "💾 保存",
+    "opt.saved": "✓ 保存しました",
+    "opt.resetConfirm": "すべての設定をデフォルトに戻しますか？",
+    "opt.resetDone": "✓ デフォルトに戻しました",
+
+    /* Popup */
+    "popup.title": "🤖 AI 要約",
+    "popup.run": "✨ このページを要約",
+    "popup.settings": "⚙️ 設定",
   },
 };
 

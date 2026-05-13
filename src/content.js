@@ -80,9 +80,35 @@
       "panel.apiKeyMissing":        "未设置 API Key，请打开设置进行配置。",
       "panel.optionFollowup":       (opt) => `用户选择了这个后续方向：“${opt}”。请直接针对这个选项给出具体回答，然后在回复末尾另起一行，提供 2–4 个 [[选项]] 作为下一步可选方向——每条为简短短语，用双方括号包裹，各占一行，不要编号。`,
     },
+    ja: {
+      "panel.title":                "🤖 AI 内容要約とチャット",
+      "panel.copy":                 "📋 コピー",
+      "panel.settings":             "⚙️ 設定",
+      "panel.close":                "✕",
+      "panel.placeholder":          "下の「要約を開始」ボタンをクリックしてください。<br>AIが現在のページ内容を自動的に抽出して分析します 📖",
+      "panel.fabTitle":             "AI 内容要約",
+      "panel.stop":                 "⏹ 停止",
+      "panel.start":                "✨ 要約を開始",
+      "panel.resummarize":          "🔄 再要約",
+      "panel.followupPlaceholder":  "追問内容を入力し、Enterで送信...",
+      "panel.rerunTooltip":         "再要約",
+      "panel.sendTooltip":          "送信",
+      "panel.extracting":           "ページ内容を抽出中...",
+      "panel.analyzing":            "AIが分析中...",
+      "panel.thinking":             "思考中...",
+      "panel.extractFail":          "❌ ページ内容の抽出に失敗したか、内容が短すぎます。",
+      "panel.metaExtracted":        (n) => `· ${n} 文字を抽出しました`,
+      "panel.emptyReply":           "(AIが空の内容を返しました)",
+      "panel.manuallyStopped":      "手動で停止しました",
+      "panel.copyNothing":          "コピーする内容がありません",
+      "panel.copied":               "✓ クリップボードにコピーしました",
+      "panel.copyFail":             "コピーに失敗しました。手動で選択してください",
+      "panel.apiKeyMissing":        "APIキーが設定されていません。設定を開いてください。",
+      "panel.optionFollowup":       (opt) => `ユーザーは次のフォローアップを選択しました：「${opt}」。この内容に対して直接、簡潔に回答してください。その後、回答の最後に新しい行から始めて、次のステップの候補となる 2〜4 個の [[選択肢]] を提示してください。各選択肢は短いフレーズとし、二重の角括弧で囲み、1行に1つずつ記載してください。番号は振らないでください。`,
+    },
   };
   // English output keyword injected into the user prompt.
-  const OUTPUT_LANG_NAME = { en: "English", zh: "Chinese" };
+  const OUTPUT_LANG_NAME = { en: "English", zh: "Chinese", ja: "Japanese" };
 
   let currentLang = "en";
   function t(key, ...args) {
