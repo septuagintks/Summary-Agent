@@ -1,69 +1,73 @@
-﻿# Edge Agent - AI Summary
+# Edge Agent — AI Summary
 
-Microsoft Edge / Chromium extension for one-click webpage summarization and follow-up chat. It is a Manifest V3 extension port of the original Tampermonkey userscript workflow, with local settings, a floating page button, a draggable result panel, streaming responses, and configurable API providers.
+A Microsoft Edge / Chromium extension (Manifest V3) for one-click webpage summarization and follow-up chat. Port of the original [AI-summary](../AI-summary) Tampermonkey userscript, rebuilt around a service-worker streaming relay, draggable in-page panel, and persistent local settings.
 
-API keys and settings are stored locally in chrome.storage.local.
+API keys and settings are stored in `chrome.storage.local` and never leave the browser.
 
 ## Features
 
-- Floating AI summary button injected into normal webpages.
-- Edge-snapped button with hover peek, drag repositioning, and viewport-aware placement.
-- Draggable summary/chat panel with copy, settings, close, regenerate, and send controls.
-- Main-content extraction from the current page.
-- Streaming AI responses through the MV3 service worker.
-- Follow-up chat after the first summary.
-- Toolbar popup action and page context-menu action.
-- UI languages supported: English, Chinese, Japanese, Korean, German.
-- Provider presets for OpenAI, Anthropic, Gemini, xAI, DeepSeek, and OpenRouter-compatible APIs.
-- Custom API URL, model, max tokens, temperature, stream mode, content length, system prompt, and user prompt.
+### Summarization
+- One-click main-content extraction from any normal webpage.
+- Streaming AI responses relayed through the MV3 service worker.
+- Markdown-light rendering (bold, italic, inline code, headings, bullet lists).
+- Follow-up chat after the first summary: ask further questions in the same panel.
+- Clickable `[[option]]` chips: when the model ends its reply with bracketed follow-up suggestions, they render as underlined links. Clicking one sends a structured follow-up prompt that asks the model to keep generating new option chips.
 
-## Summary Modes
+### Floating button & panel
+- Edge-snapped floating button with hover-peek, draggable repositioning, and persisted location.
+- Draggable summary/chat panel that anchors to the button's peek position and stays inside the viewport even as streaming content grows.
+- Toolbar popup action and page context-menu action ("AI summarize this page") for explicit triggers.
+- Keyboard shortcut: `Alt+S` toggles the toolbar popup.
 
-The settings page exposes three summary modes:
+### Configuration
+- Three summary modes (settings page):
+  - **Off** — no automatic summary; click *Start Summary* in the panel.
+  - **On open** — start summarizing the moment the floating panel opens.
+  - **Implicit** — summarize in the background once the tab finishes loading. Opening the panel later attaches to the in-progress job or shows the completed result.
+- UI languages: English, 简体中文, 日本語, 한국어. Language switches live across already-open tabs via `chrome.storage.onChanged`.
+- Output-language steering: rather than translating the system/user prompts, the extension appends `Output the summarize text in <Language>.` to the user message, so the model adapts its response.
+- Provider presets: OpenAI (Responses API), Anthropic, Gemini, xAI, DeepSeek, OpenRouter.
+- Free-form custom API URL/key/model plus max tokens, temperature, stream mode, content length, system prompt, and user prompt.
 
-- Off: no automatic summary.
-- On open: starts summarizing when the floating panel is opened.
-- Implicit: starts summarizing in the background after the page has finished loading. Opening the panel later attaches to the running job or displays the completed result.
+### Implicit-mode readiness signal
+Implicit mode waits for **both** signals before firing, instead of a fixed post-load timeout:
+- the tab load status reported by `chrome.tabs.onUpdated` / `sender.tab.status`, and
+- the content script's local `document.readyState`.
 
-Implicit mode now waits for both signals before starting:
+## Install (development)
 
-- the tab load status from chrome.tabs.onUpdated / sender.tab.status
-- the content script document.readyState
+1. Open `edge://extensions` (or `chrome://extensions`).
+2. Toggle **Developer mode** on.
+3. Click **Load unpacked** and select this `Edge-Agent` directory.
+4. Pin the extension, open its options page, configure a provider and API key.
+5. Use the floating button, the toolbar popup, or the page context-menu action.
 
-This avoids relying on a fixed post-load timeout while still ensuring the content script and page are ready.
+## Project layout
 
-## Development Load
-
-1. Open edge://extensions or chrome://extensions.
-2. Enable Developer mode.
-3. Click Load unpacked.
-4. Select this Edge-Agent directory.
-5. Pin the extension, open settings, configure a provider/API key, then use the floating button or toolbar popup.
-
-## Project Layout
-
-`	ext
-manifest.json       MV3 manifest
+```text
+manifest.json            MV3 manifest
 src/
-  background.js     Service worker: streaming API relay, context menu, tab load status
-  content.js        Injected UI, extraction, panel state, summary/chat workflow
-  content.css       Injected UI styles and page-CSS isolation
+  background.js          Service worker: fetch + SSE streaming relay,
+                         context menu, tab load tracking, storage migrations
+  content.js             Injected UI, extraction, panel state machine,
+                         summary/chat workflow, inlined panel i18n
+  content.css            Injected UI styles and page-CSS isolation
   lib/
-    defaults.js     Default config and provider presets
-    extract.js      Page content extraction logic
-    i18n.js         Localization strings and helpers
-    providers.js    Provider request/response adapters
-    storage.js      chrome.storage.local wrapper
-  popup/            Toolbar popup
-options/            Full settings page
-icons/              Icon notes/assets
-`
+    defaults.js          Default config and provider presets
+    extract.js           Main-content extraction
+    i18n.js              Shared en/zh/ja/ko string tables (options + popup)
+    providers.js         Provider request/response adapters
+    storage.js           chrome.storage.local wrapper
+  popup/                 Toolbar popup
+options/                 Full settings page
+icons/                   Icon assets / placeholder
+```
 
 ## Notes
 
-- The extension uses host_permissions: ["<all_urls>"] so the content script can run on supported webpages and the service worker can call configured API endpoints.
-- Restricted browser pages such as edge:// / chrome:// cannot be injected by normal extensions.
-- API compatibility depends on the selected provider and endpoint format.
+- `host_permissions: ["<all_urls>"]` lets the content script run on regular webpages and the service worker reach configured API endpoints.
+- Restricted browser surfaces (`edge://`, `chrome://`, the Web Store, etc.) cannot be injected by extensions; the floating button won't appear there.
+- API compatibility depends on the selected provider's request/response shape. Custom endpoints should match one of: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Gemini `generateContent`/`streamGenerateContent`.
 
 ## License
 
