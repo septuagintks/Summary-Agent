@@ -55,7 +55,10 @@ function safePost(port, msg) {
 
 async function runCall(messages, port, signal) {
   const cfg = await Cfg.get();
-  if (!cfg.apiKey && !cfg.apiUrl.includes("{key}")) {
+
+  // Expand placeholders to check if key is actually provided
+  const finalUrl = cfg.apiUrl.replace("{key}", cfg.apiKey || "").replace("{model}", cfg.model || "");
+  if (!cfg.apiKey || finalUrl.includes("{key}")) {
     safePost(port, { type: "error", error: "API Key not set, please open settings to configure" });
     return;
   }
