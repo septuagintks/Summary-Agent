@@ -32,6 +32,35 @@
 
       <section class="presets" id="presets"></section>
 
+      <div class="modal" id="custom-modal" role="dialog" aria-modal="true" aria-labelledby="custom-modal-title" hidden>
+        <div class="modal-card">
+          <h2 id="custom-modal-title" data-i18n="opt.custom.title"></h2>
+          <label><span data-i18n="opt.custom.name"></span>
+            <input id="cp-name" type="text" placeholder="My Provider" />
+          </label>
+          <label><span data-i18n="opt.custom.url"></span>
+            <input id="cp-url" type="text" placeholder="https://api.example.com/v1/chat/completions" />
+          </label>
+          <label><span data-i18n="opt.custom.compat"></span>
+            <select id="cp-compat">
+              <option value="openai">OpenAI / Chat Completions</option>
+              <option value="openai-responses">OpenAI / Responses</option>
+              <option value="anthropic">Anthropic / Messages</option>
+              <option value="gemini">Gemini / generateContent</option>
+            </select>
+          </label>
+          <label><span data-i18n="opt.custom.model"></span>
+            <input id="cp-model" type="text" placeholder="model-id" />
+          </label>
+          <div class="hint" data-i18n="opt.custom.hint"></div>
+          <div id="cp-error" class="cp-error" hidden></div>
+          <div class="modal-actions">
+            <button type="button" id="cp-cancel" class="secondary" data-i18n="opt.custom.cancel"></button>
+            <button type="button" id="cp-save"   class="primary"   data-i18n="opt.custom.add"></button>
+          </div>
+        </div>
+      </div>
+
       <label><span data-i18n="opt.apiUrl"></span>
         <input id="f-url" type="text" placeholder="https://api.openai.com/v1/chat/completions" />
       </label>

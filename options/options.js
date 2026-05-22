@@ -7,7 +7,14 @@ const $ = (id) => document.getElementById(id);
 let currentLang = "en";
 let currentMode = "off";
 let currentPresetId = null;
+let customProviders = [];
 let t = makeT(currentLang);
+
+// Built-in + custom presets, merged on every read so we always see the
+// latest custom list when comparing URLs or rendering chips.
+function allPresets() {
+  return [...PRESETS, ...customProviders];
+}
 
 function applyI18n() {
   document.documentElement.lang = currentLang === "zh" ? "zh-CN" : "en";
@@ -21,6 +28,8 @@ function applyI18n() {
   // Refresh model-dropdown localized "Custom" label
   const sel = $("f-model-quick");
   if (sel) populateModelDropdown(currentPresetId, $("f-model").value.trim());
+  // Re-render preset chips so their localized tooltips update.
+  if ($("presets")) renderPresets();
 }
 
 function setLanguage(lang) {
@@ -72,7 +81,7 @@ function fillForm(cfg) {
 }
 
 function detectPresetFromUrl(url) {
-  return PRESETS.find((p) => p.url === url)?.id || null;
+  return allPresets().find((p) => p.url === url)?.id || null;
 }
 
 function populateModelDropdown(presetId, selectedModel) {
@@ -80,7 +89,7 @@ function populateModelDropdown(presetId, selectedModel) {
   sel.innerHTML = "";
   sel.appendChild(new Option(t("opt.modelCustom"), "__custom__"));
 
-  const preset = PRESETS.find((p) => p.id === presetId);
+  const preset = allPresets().find((p) => p.id === presetId);
   if (preset?.models) {
     for (const m of preset.models) sel.appendChild(new Option(m, m));
   }
@@ -100,11 +109,13 @@ function syncModelDropdown() {
 function renderPresets() {
   const wrap = $("presets");
   wrap.innerHTML = "";
-  for (const p of PRESETS) {
+  for (const p of allPresets()) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "pre";
-    b.textContent = p.name;
+    const label = document.createElement("span");
+    label.textContent = p.name;
+    b.appendChild(label);
     b.addEventListener("click", async () => {
       $("f-url").value = p.url;
       $("f-model").value = p.model;
@@ -112,8 +123,99 @@ function renderPresets() {
       currentPresetId = p.id;
       populateModelDropdown(p.id, p.model);
     });
+
+    if (p.custom) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "pre-del";
+      del.textContent = "×";
+      del.title = t("opt.custom.delete");
+      del.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (!confirm(t("opt.custom.confirmDelete")(p.name))) return;
+        customProviders = customProviders.filter((c) => c.id !== p.id);
+        await Cfg.setCustomProviders(customProviders);
+        if (currentPresetId === p.id) {
+          currentPresetId = null;
+          populateModelDropdown(null, $("f-model").value.trim());
+        }
+        renderPresets();
+      });
+      b.appendChild(del);
+    }
     wrap.appendChild(b);
   }
+
+  // Trailing "+" chip to add a custom provider.
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "pre pre-add";
+  add.textContent = "+";
+  add.title = t("opt.custom.add");
+  add.addEventListener("click", openCustomModal);
+  wrap.appendChild(add);
+}
+
+function openCustomModal() {
+  $("cp-name").value = "";
+  $("cp-url").value = "";
+  $("cp-compat").value = "openai";
+  $("cp-model").value = "";
+  $("cp-error").hidden = true;
+  $("cp-error").textContent = "";
+  $("custom-modal").hidden = false;
+  setTimeout(() => $("cp-name").focus(), 0);
+}
+
+function closeCustomModal() {
+  $("custom-modal").hidden = true;
+}
+
+async function saveCustomProvider() {
+  const name = $("cp-name").value.trim();
+  const url = $("cp-url").value.trim();
+  const compat = $("cp-compat").value;
+  const model = $("cp-model").value.trim();
+  const errEl = $("cp-error");
+
+  const showErr = (key) => {
+    errEl.textContent = t(key);
+    errEl.hidden = false;
+  };
+
+  if (!name) return showErr("opt.custom.errName");
+  if (!url || !/^https?:\/\//i.test(url)) return showErr("opt.custom.errUrl");
+  if (!model) return showErr("opt.custom.errModel");
+
+  // Reject duplicate URLs against built-ins or existing customs.
+  const dup = allPresets().find((p) => p.url === url);
+  if (dup) return showErr("opt.custom.errDup");
+
+  const id = "custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+  const entry = {
+    id,
+    name,
+    url,
+    compat,
+    model,
+    models: [model],
+    custom: true,
+  };
+  customProviders.push(entry);
+  await Cfg.setCustomProviders(customProviders);
+  renderPresets();
+  closeCustomModal();
+}
+
+function bindCustomModal() {
+  $("cp-cancel").addEventListener("click", closeCustomModal);
+  $("cp-save").addEventListener("click", saveCustomProvider);
+  $("custom-modal").addEventListener("click", (e) => {
+    if (e.target === $("custom-modal")) closeCustomModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("custom-modal").hidden) closeCustomModal();
+  });
 }
 
 function bindSegmented() {
@@ -160,18 +262,20 @@ function bindModelControls() {
 }
 
 async function init() {
+  customProviders = await Cfg.getCustomProviders();
   renderLanguageOptions();
   renderPresets();
   bindSegmented();
   bindLanguage();
   bindModelControls();
+  bindCustomModal();
   fillForm(await Cfg.get());
 }
 
 $("save").addEventListener("click", async () => {
   const url = $("f-url").value.trim();
   const key = $("f-key").value.trim();
-  const matched = PRESETS.find((p) => p.url === url);
+  const matched = allPresets().find((p) => p.url === url);
   if (matched && key) await Cfg.setProviderKey(matched.id, key);
 
   await Cfg.set({
@@ -196,7 +300,7 @@ $("reset").addEventListener("click", async () => {
   // Reset reverts to DEFAULTS but keeps provider API keys; pull the key
   // matching the default API URL so the form reflects what's actually
   // stored.
-  const matched = PRESETS.find((p) => p.url === DEFAULTS.apiUrl);
+  const matched = allPresets().find((p) => p.url === DEFAULTS.apiUrl);
   const apiKey = matched ? await Cfg.getProviderKey(matched.id) : "";
   fillForm({ ...DEFAULTS, apiKey });
   flash(t("opt.resetDone"));

@@ -71,6 +71,22 @@ export const STRINGS = {
     "opt.resetConfirm": "Restore all default settings?",
     "opt.resetDone": "✓ Defaults restored",
 
+    /* Custom provider */
+    "opt.custom.title": "Add custom provider",
+    "opt.custom.name": "Provider name",
+    "opt.custom.url": "API URL",
+    "opt.custom.compat": "Compatibility format",
+    "opt.custom.model": "Default model",
+    "opt.custom.hint": "Pick the API shape that matches your endpoint. The URL must be unique across providers.",
+    "opt.custom.add": "Add",
+    "opt.custom.cancel": "Cancel",
+    "opt.custom.delete": "Delete this custom provider",
+    "opt.custom.confirmDelete": (name) => `Delete custom provider "${name}"?`,
+    "opt.custom.errName": "Provider name is required.",
+    "opt.custom.errUrl": "API URL must start with http:// or https://.",
+    "opt.custom.errModel": "Default model is required.",
+    "opt.custom.errDup": "Another provider already uses this URL.",
+
     /* Popup */
     "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ Summarize current page",
@@ -130,6 +146,22 @@ export const STRINGS = {
     "opt.saved": "✓ 已保存",
     "opt.resetConfirm": "确认恢复所有默认设置？",
     "opt.resetDone": "✓ 已恢复默认设置",
+
+    /* Custom provider */
+    "opt.custom.title": "添加自定义供应商",
+    "opt.custom.name": "供应商名称",
+    "opt.custom.url": "API 地址",
+    "opt.custom.compat": "兼容格式",
+    "opt.custom.model": "默认模型",
+    "opt.custom.hint": "选择与你的接口匹配的 API 格式。URL 不能与其他供应商重复。",
+    "opt.custom.add": "添加",
+    "opt.custom.cancel": "取消",
+    "opt.custom.delete": "删除此自定义供应商",
+    "opt.custom.confirmDelete": (name) => `确认删除自定义供应商「${name}」？`,
+    "opt.custom.errName": "请填写供应商名称。",
+    "opt.custom.errUrl": "API 地址需以 http:// 或 https:// 开头。",
+    "opt.custom.errModel": "请填写默认模型。",
+    "opt.custom.errDup": "已有供应商使用此 URL。",
 
     /* Popup */
     "popup.title": "🤖 Summary Agent",
@@ -191,6 +223,22 @@ export const STRINGS = {
     "opt.resetConfirm": "すべての設定をデフォルトに戻しますか？",
     "opt.resetDone": "✓ デフォルトに戻しました",
 
+    /* Custom provider */
+    "opt.custom.title": "カスタムプロバイダーを追加",
+    "opt.custom.name": "プロバイダー名",
+    "opt.custom.url": "API URL",
+    "opt.custom.compat": "互換形式",
+    "opt.custom.model": "既定モデル",
+    "opt.custom.hint": "エンドポイントに合う API 形式を選択してください。URL は他のプロバイダーと重複できません。",
+    "opt.custom.add": "追加",
+    "opt.custom.cancel": "キャンセル",
+    "opt.custom.delete": "このカスタムプロバイダーを削除",
+    "opt.custom.confirmDelete": (name) => `カスタムプロバイダー「${name}」を削除しますか？`,
+    "opt.custom.errName": "プロバイダー名を入力してください。",
+    "opt.custom.errUrl": "API URL は http:// または https:// で始まる必要があります。",
+    "opt.custom.errModel": "既定モデルを入力してください。",
+    "opt.custom.errDup": "この URL は既に他のプロバイダーで使用されています。",
+
     /* Popup */
     "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ このページを要約",
@@ -250,6 +298,22 @@ export const STRINGS = {
     "opt.saved": "✓ 저장했습니다",
     "opt.resetConfirm": "모든 설정을 기본값으로 복원하시겠습니까?",
     "opt.resetDone": "✓ 기본값으로 복원했습니다",
+
+    /* Custom provider */
+    "opt.custom.title": "사용자 지정 공급자 추가",
+    "opt.custom.name": "공급자 이름",
+    "opt.custom.url": "API URL",
+    "opt.custom.compat": "호환 형식",
+    "opt.custom.model": "기본 모델",
+    "opt.custom.hint": "엔드포인트에 맞는 API 형식을 선택하세요. URL은 다른 공급자와 중복될 수 없습니다.",
+    "opt.custom.add": "추가",
+    "opt.custom.cancel": "취소",
+    "opt.custom.delete": "이 사용자 지정 공급자 삭제",
+    "opt.custom.confirmDelete": (name) => `사용자 지정 공급자 "${name}"을(를) 삭제하시겠습니까?`,
+    "opt.custom.errName": "공급자 이름을 입력하세요.",
+    "opt.custom.errUrl": "API URL은 http:// 또는 https://로 시작해야 합니다.",
+    "opt.custom.errModel": "기본 모델을 입력하세요.",
+    "opt.custom.errDup": "이 URL을 사용하는 공급자가 이미 있습니다.",
 
     /* Popup */
     "popup.title": "🤖 Summary Agent",

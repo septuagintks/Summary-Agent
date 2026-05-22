@@ -1,6 +1,9 @@
 // Models that use the Responses API (/v1/responses) instead of Chat Completions.
 const RESPONSES_API_MODEL_RE = /^gpt-5/;
 
+// Compat keys exposed in the custom-provider settings UI.
+export const COMPAT_VALUES = ["openai", "openai-responses", "anthropic", "gemini"];
+
 export function isResponsesModel(model = "") {
   return RESPONSES_API_MODEL_RE.test(model);
 }
@@ -8,8 +11,11 @@ export function isResponsesModel(model = "") {
 /**
  * @param {string} url
  * @param {string} [model] - pass cfg.model so GPT-5 auto-routes to openai-responses
+ * @param {string} [compatOverride] - one of COMPAT_VALUES; bypasses URL sniffing
+ *                                    (used by custom providers)
  */
-export function detectProvider(url, model = "") {
+export function detectProvider(url, model = "", compatOverride = "") {
+  if (compatOverride && COMPAT_VALUES.includes(compatOverride)) return compatOverride;
   if (url.includes("anthropic.com")) return "anthropic";
   if (url.includes("generativelanguage.googleapis")) return "gemini";
   // Explicit Responses API endpoint is always honored.
@@ -31,8 +37,8 @@ function toResponsesUrl(apiUrl) {
   return apiUrl.replace(/\/v1\/?$/, "/v1/responses").replace(/openai\.com\/?$/, "openai.com/v1/responses");
 }
 
-export function buildRequest(cfg, messages) {
-  const provider = detectProvider(cfg.apiUrl, cfg.model);
+export function buildRequest(cfg, messages, compatOverride = "") {
+  const provider = detectProvider(cfg.apiUrl, cfg.model, compatOverride);
 
   if (provider === "openai-responses") {
     return {

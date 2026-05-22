@@ -32,4 +32,13 @@ export const Cfg = {
   async setFabPosition(pos) {
     await chrome.storage.local.set({ fab_position: pos });
   },
+  // Custom providers — stored separately so they survive reset() and so
+  // multiple entries can be added without bloating DEFAULTS.
+  async getCustomProviders() {
+    const v = await chrome.storage.local.get("custom_providers");
+    return Array.isArray(v.custom_providers) ? v.custom_providers : [];
+  },
+  async setCustomProviders(list) {
+    await chrome.storage.local.set({ custom_providers: list });
+  },
 };

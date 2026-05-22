@@ -162,8 +162,12 @@ async function runCall(messages, port, signal, options = {}) {
     return;
   }
 
-  const provider = detectProvider(cfg.apiUrl, cfg.model);
-  const req = buildRequest(cfg, messages);
+  const customProviders = await Cfg.getCustomProviders();
+  const matchedCustom = customProviders.find((c) => c.url === cfg.apiUrl);
+  const compatOverride = matchedCustom?.compat || "";
+
+  const provider = detectProvider(cfg.apiUrl, cfg.model, compatOverride);
+  const req = buildRequest(cfg, messages, compatOverride);
 
   const fetchResult = await fetchWithRetry(req, signal, port, retryEnabled);
   if (!fetchResult.ok) {
