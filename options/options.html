@@ -41,6 +41,13 @@
           <label><span data-i18n="opt.custom.url"></span>
             <input id="cp-url" type="text" placeholder="https://api.example.com/v1/chat/completions" />
           </label>
+          <label><span data-i18n="opt.custom.apiKey"></span>
+            <div class="key-wrap">
+              <input id="cp-key" type="password" placeholder="sk-..." autocomplete="off" />
+              <button type="button" id="cp-key-eye" class="key-eye" aria-pressed="false" tabindex="-1"></button>
+            </div>
+            <div class="hint" id="cp-key-hint" data-i18n="opt.custom.apiKeyHint"></div>
+          </label>
           <label><span data-i18n="opt.custom.compat"></span>
             <select id="cp-compat">
               <option value="openai">OpenAI / Chat Completions</option>
@@ -65,7 +72,10 @@
         <input id="f-url" type="text" placeholder="https://api.openai.com/v1/chat/completions" />
       </label>
       <label><span data-i18n="opt.apiKey"></span>
-        <input id="f-key" type="password" placeholder="sk-..." />
+        <div class="key-wrap">
+          <input id="f-key" type="password" placeholder="sk-..." autocomplete="off" />
+          <button type="button" id="f-key-eye" class="key-eye" aria-pressed="false" tabindex="-1"></button>
+        </div>
       </label>
       <label><span data-i18n="opt.model"></span>
         <select id="f-model-quick" class="model-quick"></select>

@@ -197,6 +197,52 @@ textarea { resize: vertical; min-height: 70px; }
 }
 .pre.pre-add:hover { background: #6366f1; color: #fff; }
 
+.pre .pre-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, .12);
+  color: inherit;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.pre .pre-edit:hover { background: rgba(255, 255, 255, .25); }
+
+.key-wrap {
+  position: relative;
+  margin-top: 6px;
+}
+.key-wrap input {
+  margin-top: 0;
+  padding-right: 38px;
+}
+.key-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 0;
+  cursor: pointer;
+  color: #9ca3af;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.key-eye:hover { color: #4f46e5; background: rgba(99,102,241,.08); }
+.key-eye:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
+.key-eye svg { width: 18px; height: 18px; pointer-events: none; }
+
 .modal[hidden] { display: none; }
 .modal {
   position: fixed;

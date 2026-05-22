@@ -8,10 +8,12 @@ let currentLang = "en";
 let currentMode = "off";
 let currentPresetId = null;
 let customProviders = [];
+let editingId = null;
 let t = makeT(currentLang);
 
-// Built-in + custom presets, merged on every read so we always see the
-// latest custom list when comparing URLs or rendering chips.
+const EYE_SHOW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_HIDE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a19.77 19.77 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a19.77 19.77 0 0 1-3.16 4.19"/><path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
 function allPresets() {
   return [...PRESETS, ...customProviders];
 }
@@ -30,6 +32,9 @@ function applyI18n() {
   if (sel) populateModelDropdown(currentPresetId, $("f-model").value.trim());
   // Re-render preset chips so their localized tooltips update.
   if ($("presets")) renderPresets();
+  // Refresh eye titles (they depend on aria-pressed state).
+  refreshEyeTitle($("f-key-eye"));
+  refreshEyeTitle($("cp-key-eye"));
 }
 
 function setLanguage(lang) {
@@ -125,6 +130,17 @@ function renderPresets() {
     });
 
     if (p.custom) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "pre-edit";
+      edit.textContent = "✎";
+      edit.title = t("opt.custom.edit");
+      edit.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        openCustomModal(p);
+      });
+      b.appendChild(edit);
+
       const del = document.createElement("button");
       del.type = "button";
       del.className = "pre-del";
@@ -133,13 +149,20 @@ function renderPresets() {
       del.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         if (!confirm(t("opt.custom.confirmDelete")(p.name))) return;
-        customProviders = customProviders.filter((c) => c.id !== p.id);
-        await Cfg.setCustomProviders(customProviders);
-        if (currentPresetId === p.id) {
-          currentPresetId = null;
-          populateModelDropdown(null, $("f-model").value.trim());
+        const next = customProviders.filter((c) => c.id !== p.id);
+        try {
+          await Cfg.setCustomProviders(next);
+          customProviders = next;
+          // Best-effort cleanup of orphaned api key.
+          try { await chrome.storage.local.remove("apiKey_" + p.id); } catch {}
+          if (currentPresetId === p.id) {
+            currentPresetId = null;
+            populateModelDropdown(null, $("f-model").value.trim());
+          }
+          renderPresets();
+        } catch {
+          alert(t("opt.custom.errStorage"));
         }
-        renderPresets();
       });
       b.appendChild(del);
     }
@@ -152,23 +175,46 @@ function renderPresets() {
   add.className = "pre pre-add";
   add.textContent = "+";
   add.title = t("opt.custom.add");
-  add.addEventListener("click", openCustomModal);
+  add.addEventListener("click", () => openCustomModal(null));
   wrap.appendChild(add);
 }
 
-function openCustomModal() {
-  $("cp-name").value = "";
-  $("cp-url").value = "";
-  $("cp-compat").value = "openai";
-  $("cp-model").value = "";
+async function openCustomModal(provider) {
+  editingId = provider?.id || null;
+  $("custom-modal-title").textContent = editingId ? t("opt.custom.editTitle") : t("opt.custom.title");
+  $("cp-save").textContent = editingId ? t("opt.custom.save") : t("opt.custom.add");
+  $("cp-name").value = provider?.name || "";
+  $("cp-url").value = provider?.url || "";
+  $("cp-compat").value = provider?.compat || "openai";
+  $("cp-model").value = provider?.model || "";
+  $("cp-key").value = "";
   $("cp-error").hidden = true;
   $("cp-error").textContent = "";
+
+  // Reveal-state reset for the modal eye each time it opens.
+  const cpKey = $("cp-key");
+  const cpEye = $("cp-key-eye");
+  cpKey.type = "password";
+  cpEye.setAttribute("aria-pressed", "false");
+  cpEye.innerHTML = EYE_SHOW_SVG;
+  refreshEyeTitle(cpEye);
+
+  // When editing, prefill the masked field with the saved key so the user
+  // can reveal it. When adding, leave blank.
+  if (editingId) {
+    try {
+      const saved = await Cfg.getProviderKey(editingId);
+      if (saved) cpKey.value = saved;
+    } catch {}
+  }
+
   $("custom-modal").hidden = false;
   setTimeout(() => $("cp-name").focus(), 0);
 }
 
 function closeCustomModal() {
   $("custom-modal").hidden = true;
+  editingId = null;
 }
 
 async function saveCustomProvider() {
@@ -176,33 +222,61 @@ async function saveCustomProvider() {
   const url = $("cp-url").value.trim();
   const compat = $("cp-compat").value;
   const model = $("cp-model").value.trim();
+  const key = $("cp-key").value;
   const errEl = $("cp-error");
 
-  const showErr = (key) => {
-    errEl.textContent = t(key);
+  const showErr = (k) => {
+    errEl.textContent = t(k);
     errEl.hidden = false;
   };
 
   if (!name) return showErr("opt.custom.errName");
-  if (!url || !/^https?:\/\//i.test(url)) return showErr("opt.custom.errUrl");
+  if (name.length > 50) return showErr("opt.custom.errNameLong");
   if (!model) return showErr("opt.custom.errModel");
+  if (model.length > 100) return showErr("opt.custom.errModel");
+  if (!url || url.length > 500) return showErr("opt.custom.errUrlInvalid");
 
-  // Reject duplicate URLs against built-ins or existing customs.
-  const dup = allPresets().find((p) => p.url === url);
+  let parsed;
+  try { parsed = new URL(url); } catch { return showErr("opt.custom.errUrlInvalid"); }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return showErr("opt.custom.errUrlInvalid");
+  }
+
+  // Placeholder rules: gemini-style URLs use {model}/{key}; other compat
+  // formats reject those tokens to avoid silently broken requests.
+  const hasKeyPlaceholder = /\{key\}/i.test(url);
+  const hasModelPlaceholder = /\{model\}/i.test(url);
+  if (compat === "gemini") {
+    if (!hasKeyPlaceholder || !hasModelPlaceholder) {
+      return showErr("opt.custom.errGeminiPlaceholders");
+    }
+  } else {
+    if (hasKeyPlaceholder || hasModelPlaceholder) {
+      return showErr("opt.custom.errPlaceholderUnsupported");
+    }
+  }
+
+  const dup = allPresets().find((p) => p.url === url && p.id !== editingId);
   if (dup) return showErr("opt.custom.errDup");
 
-  const id = "custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
-  const entry = {
-    id,
-    name,
-    url,
-    compat,
-    model,
-    models: [model],
-    custom: true,
-  };
-  customProviders.push(entry);
-  await Cfg.setCustomProviders(customProviders);
+  const id = editingId || ("custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6));
+  const entry = { id, name, url, compat, model, models: [model], custom: true };
+
+  // Build next state in a local first; only mutate the in-memory list once
+  // chrome.storage.local accepts the write, so a rejected write doesn't
+  // leave a phantom chip the user can't dismiss.
+  const next = editingId
+    ? customProviders.map((c) => (c.id === editingId ? entry : c))
+    : [...customProviders, entry];
+
+  try {
+    await Cfg.setCustomProviders(next);
+    if (key) await Cfg.setProviderKey(id, key);
+    customProviders = next;
+  } catch {
+    return showErr("opt.custom.errStorage");
+  }
+
   renderPresets();
   closeCustomModal();
 }
@@ -216,6 +290,32 @@ function bindCustomModal() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !$("custom-modal").hidden) closeCustomModal();
   });
+}
+
+function refreshEyeTitle(btn) {
+  if (!btn) return;
+  const shown = btn.getAttribute("aria-pressed") === "true";
+  btn.title = t(shown ? "opt.eye.hide" : "opt.eye.show");
+  btn.setAttribute("aria-label", btn.title);
+}
+
+function attachKeyEye(input, btn) {
+  if (!input || !btn) return;
+  btn.innerHTML = EYE_SHOW_SVG;
+  refreshEyeTitle(btn);
+  btn.addEventListener("click", () => {
+    const next = input.type === "password" ? "text" : "password";
+    input.type = next;
+    const shown = next === "text";
+    btn.setAttribute("aria-pressed", shown ? "true" : "false");
+    btn.innerHTML = shown ? EYE_HIDE_SVG : EYE_SHOW_SVG;
+    refreshEyeTitle(btn);
+  });
+}
+
+function bindEyes() {
+  attachKeyEye($("f-key"), $("f-key-eye"));
+  attachKeyEye($("cp-key"), $("cp-key-eye"));
 }
 
 function bindSegmented() {
@@ -269,6 +369,7 @@ async function init() {
   bindLanguage();
   bindModelControls();
   bindCustomModal();
+  bindEyes();
   fillForm(await Cfg.get());
 }
 

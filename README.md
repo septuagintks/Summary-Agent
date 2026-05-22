@@ -26,7 +26,8 @@ API keys and settings are stored in `chrome.storage.local` and never leave the b
   - **Implicit** — summarize in the background once the tab finishes loading. Opening the panel later attaches to the in-progress job or shows the completed result.
 - UI languages: English, 简体中文, 日本語, 한국어. Language switches live across already-open tabs via `chrome.storage.onChanged`.
 - Output-language steering: rather than translating the system/user prompts, the extension appends `Output the summarize text in <Language>.` to the user message, so the model adapts its response.
-- Provider presets: OpenAI (defaults to Responses API `/v1/responses`), Anthropic, Gemini, xAI, DeepSeek, OpenRouter.
+- Provider presets: OpenAI (defaults to Responses API `/v1/responses`), Anthropic, Gemini, xAI, DeepSeek, OpenRouter — each with a per-provider model dropdown stocked with current mainstream models.
+- Custom providers: a trailing `+` chip lets you add your own endpoints. Each entry stores name, URL, default model, optional API key (with a reveal "eye" toggle), and a compatibility format chosen from OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, or Gemini `generateContent`. Existing entries can be edited or deleted from the chip.
 - Free-form custom API URL/key/model plus max tokens, temperature, stream mode, content length, system prompt, and user prompt.
 
 ### Implicit-mode readiness signal
