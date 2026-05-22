@@ -26,7 +26,7 @@ API keys and settings are stored in `chrome.storage.local` and never leave the b
   - **Implicit** — summarize in the background once the tab finishes loading. Opening the panel later attaches to the in-progress job or shows the completed result.
 - UI languages: English, 简体中文, 日本語, 한국어. Language switches live across already-open tabs via `chrome.storage.onChanged`.
 - Output-language steering: rather than translating the system/user prompts, the extension appends `Output the summarize text in <Language>.` to the user message, so the model adapts its response.
-- Provider presets: OpenAI (Responses API), Anthropic, Gemini, xAI, DeepSeek, OpenRouter.
+- Provider presets: OpenAI (defaults to Responses API `/v1/responses`), Anthropic, Gemini, xAI, DeepSeek, OpenRouter.
 - Free-form custom API URL/key/model plus max tokens, temperature, stream mode, content length, system prompt, and user prompt.
 
 ### Implicit-mode readiness signal
@@ -68,7 +68,7 @@ icons/                   Icon assets / placeholder
 - `host_permissions: ["<all_urls>"]` lets the content script run on regular webpages and the service worker reach configured API endpoints.
 - Restricted browser surfaces (`edge://`, `chrome://`, the Web Store, etc.) cannot be injected by extensions; the floating button won't appear there.
 - Anthropic direct calls from the browser require the `anthropic-dangerous-direct-browser-access: true` header (sent automatically). Anthropic treats MV3 service workers as a browser context.
-- GPT-5 series models auto-route to OpenAI's Responses API (`/v1/responses`), but only when the API URL points at `api.openai.com`. Aggregators (OpenRouter, etc.) keep using their own chat-completions endpoint even with a `gpt-5*` model name.
+- GPT-5 series models auto-route to OpenAI's Responses API (`/v1/responses`), but **only when the API URL points at `api.openai.com`**. Aggregators (OpenRouter, etc.) keep using their own chat-completions endpoint even with a `gpt-5*` model name.
 - API compatibility depends on the selected provider's request/response shape. Custom endpoints should match one of: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Gemini `generateContent`/`streamGenerateContent`.
 
 ## License
