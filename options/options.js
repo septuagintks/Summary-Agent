@@ -126,10 +126,14 @@ function renderPresets() {
     b.appendChild(label);
     b.addEventListener("click", async () => {
       $("f-url").value = p.url;
-      $("f-model").value = p.model;
       $("f-key").value = await Cfg.getProviderKey(p.id);
+      // The provider's `model` is a hint ("typical model" stored at add
+      // time), not a hard default — only fill it when the model field is
+      // empty so we don't clobber a user-edited value.
+      const cur = $("f-model").value.trim();
+      if (!cur) $("f-model").value = p.model;
       currentPresetId = p.id;
-      populateModelDropdown(p.id, p.model);
+      populateModelDropdown(p.id, $("f-model").value.trim());
       updateCustomTools();
     });
 
@@ -384,7 +388,11 @@ function bindModelControls() {
   $("f-model").addEventListener("input", syncModelDropdown);
   $("f-url").addEventListener("input", () => {
     const id = detectPresetFromUrl($("f-url").value.trim());
-    if (id !== currentPresetId) {
+    // Only switch when the typed URL exactly matches a *different* preset.
+    // Mid-edit values that don't match anything must NOT clear
+    // currentPresetId, otherwise the inline custom-tools section flickers
+    // away while the user is still typing.
+    if (id && id !== currentPresetId) {
       currentPresetId = id;
       populateModelDropdown(id, $("f-model").value.trim());
       updateCustomTools();

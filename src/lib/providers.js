@@ -4,25 +4,40 @@ const RESPONSES_API_MODEL_RE = /^gpt-5/;
 // Compat keys exposed in the custom-provider settings UI.
 export const COMPAT_VALUES = ["openai", "openai-responses", "anthropic", "gemini"];
 
-// Default path applied when the user typed only a host (or host + /v1)
-// instead of a full endpoint. Used at request time only — the stored URL
-// is left intact.
-const COMPAT_DEFAULT_PATH = {
-  "openai": "/v1/chat/completions",
-  "openai-responses": "/v1/responses",
-  "anthropic": "/v1/messages",
-  "gemini": "/v1beta/models/{model}:generateContent?key={key}",
+// What gets appended after the base path. Splitting "base + tail" lets
+// us complete URLs whose pathname is just the base (e.g. "/v1" or
+// "/api/v1") without rewriting the host or any path prefix the user
+// added in front of the version segment.
+const COMPAT_BASE_PATH = {
+  "openai": "/v1",
+  "openai-responses": "/v1",
+  "anthropic": "/v1",
+  "gemini": "/v1beta",
+};
+const COMPAT_TAIL = {
+  "openai": "/chat/completions",
+  "openai-responses": "/responses",
+  "anthropic": "/messages",
+  "gemini": "/models/{model}:generateContent?key={key}",
 };
 
 export function completeUrlForCompat(url, compat) {
   if (!url) return url;
-  const path = COMPAT_DEFAULT_PATH[compat];
-  if (!path) return url;
+  const base = COMPAT_BASE_PATH[compat];
+  const tail = COMPAT_TAIL[compat];
+  if (!base || !tail) return url;
   let parsed;
   try { parsed = new URL(url); } catch { return url; }
-  const clean = parsed.pathname.replace(/\/$/, "");
-  // Only auto-complete when the user typed a host (or just /v1).
-  if (clean === "" || clean === "/v1") return parsed.origin + path;
+
+  const path = parsed.pathname.replace(/\/$/, "");
+  // Bare host → assume the user wants the canonical "<origin><base><tail>".
+  if (path === "") return parsed.origin + base + tail;
+  // Path ends at the version segment ("/v1", "/v1beta", "/api/v1",
+  // "/openai/v1", …). Append the compat-specific tail after it.
+  if (path === base || path.endsWith(base)) {
+    return parsed.origin + path + tail + (parsed.search || "");
+  }
+  // Anything else is treated as already complete; we don't try to guess.
   return url;
 }
 
