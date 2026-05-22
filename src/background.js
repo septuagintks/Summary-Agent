@@ -173,7 +173,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
   try {
     chrome.contextMenus.create({
-      id: "ai-summary-run",
+      id: "summary-agent-run",
       title: "AI summarize this page",
       contexts: ["page"],
     });
@@ -181,7 +181,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.contextMenus?.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "ai-summary-run" && tab?.id) {
+  if (info.menuItemId === "summary-agent-run" && tab?.id) {
     chrome.tabs.sendMessage(tab.id, { type: "open-and-summarize" }).catch(() => {});
   }
 });
