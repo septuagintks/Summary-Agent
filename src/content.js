@@ -313,7 +313,14 @@
   let currentPort = null;
 
   function callAPI(messages, { onChunk, onDone, onError }) {
-    if (currentPort) return;
+    if (currentPort) {
+      // Shouldn't happen — callers gate on `streaming` — but if it does
+      // (e.g. an implicit run still holding the port), surface it as an
+      // error instead of silently dropping the call. Async so callers can
+      // finish their synchronous setup first.
+      setTimeout(() => onError?.("Another AI call is already in progress"), 0);
+      return;
+    }
     let finished = false;
     const finish = (fn, ...args) => {
       if (finished) return;
@@ -1088,6 +1095,10 @@
   async function doSummary() {
     if (streaming) return;
     // An explicit (re-)summary supersedes any implicit background run.
+    // The implicit call (if any) is still holding `currentPort`, so we
+    // must abort it before starting a new call — otherwise callAPI bails
+    // because a port is already open and the spinner spins forever.
+    if (implicitState.status === "running") abortAPI();
     implicitState.status = "idle";
     implicitState.text = "";
     implicitState.error = "";
