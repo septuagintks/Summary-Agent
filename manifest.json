@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "AI Summary",
+  "name": "Summary Agent",
   "version": "0.2.4",
   "description": "One-click AI summary and follow-up chat on any webpage. Supports OpenAI, Anthropic, Gemini, DeepSeek and other compatible APIs.",
   "author": "Septuagint",
   "minimum_chrome_version": "114",
   "action": {
-    "default_title": "AI Summary",
+    "default_title": "Summary Agent",
     "default_popup": "src/popup/popup.html"
   },
   "options_ui": {
@@ -33,7 +33,7 @@
       "suggested_key": {
         "default": "Alt+S"
       },
-      "description": "Toggle AI Summary panel"
+      "description": "Toggle Summary Agent panel"
     }
   }
 }

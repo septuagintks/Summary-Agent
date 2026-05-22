@@ -45,7 +45,7 @@ export const STRINGS = {
     "panel.optionFollowup": (opt) => `The user picked this follow-up: "${opt}". Respond to it directly and helpfully, then end your reply with 2–4 new [[option]] chips that suggest useful next steps — short phrases, no numbering, each wrapped in double square brackets on its own.`,
 
     /* Options page */
-    "opt.title": "⚙️ AI Summary Settings",
+    "opt.title": "⚙️ Summary Agent Settings",
     "opt.language": "Language",
     "opt.mode": "Summarize mode",
     "opt.mode.off": "Off",
@@ -71,7 +71,7 @@ export const STRINGS = {
     "opt.resetDone": "✓ Defaults restored",
 
     /* Popup */
-    "popup.title": "🤖 AI Summary",
+    "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ Summarize current page",
     "popup.settings": "⚙️ Settings",
   },
@@ -104,7 +104,7 @@ export const STRINGS = {
     "panel.optionFollowup": (opt) => `用户选择了这个后续方向：“${opt}”。请直接针对这个选项给出具体回答，然后在回复末尾另起一行，提供 2–4 个 [[选项]] 作为下一步可选方向——每条为简短短语，用双方括号包裹，各占一行，不要编号。`,
 
     /* Options page */
-    "opt.title": "⚙️ AI 总结 设置",
+    "opt.title": "⚙️ Summary Agent 设置",
     "opt.language": "语言",
     "opt.mode": "总结模式",
     "opt.mode.off": "关闭",
@@ -130,7 +130,7 @@ export const STRINGS = {
     "opt.resetDone": "✓ 已恢复默认设置",
 
     /* Popup */
-    "popup.title": "🤖 AI 总结",
+    "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ 总结当前页面",
     "popup.settings": "⚙️ 设置",
   },
@@ -163,7 +163,7 @@ export const STRINGS = {
     "panel.optionFollowup": (opt) => `ユーザーは次のフォローアップを選択しました：「${opt}」。この内容に対して直接、簡潔に回答してください。その後、回答の最後に新しい行から始めて、次のステップの候補となる 2〜4 個の [[選択肢]] を提示してください。各選択肢は短いフレーズとし、二重の角括弧で囲み、1 行に 1 つずつ記載してください。番号は振らないでください。`,
 
     /* Options page */
-    "opt.title": "⚙️ AI 要約 設定",
+    "opt.title": "⚙️ Summary Agent 設定",
     "opt.language": "言語",
     "opt.mode": "要約モード",
     "opt.mode.off": "オフ",
@@ -189,7 +189,7 @@ export const STRINGS = {
     "opt.resetDone": "✓ デフォルトに戻しました",
 
     /* Popup */
-    "popup.title": "🤖 AI 要約",
+    "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ このページを要約",
     "popup.settings": "⚙️ 設定",
   },
@@ -222,7 +222,7 @@ export const STRINGS = {
     "panel.optionFollowup": (opt) => `사용자가 다음 후속 질문을 선택했습니다: "${opt}". 이 질문에 대해 직접적이고 도움이 되는 방식으로 답변한 다음, 답변 끝에 다음 단계로 유용한 2~4개의 [[선택지]]를 제안하십시오. 각 선택지는 짧은 구문으로 작성하고, 이중 대괄호로 감싸며, 각 줄에 하나씩 배치하십시오. 번호는 매기지 마십시오.`,
 
     /* Options page */
-    "opt.title": "⚙️ AI 요약 설정",
+    "opt.title": "⚙️ Summary Agent 설정",
     "opt.language": "언어",
     "opt.mode": "요약 모드",
     "opt.mode.off": "끄기",
@@ -248,7 +248,7 @@ export const STRINGS = {
     "opt.resetDone": "✓ 기본값으로 복원했습니다",
 
     /* Popup */
-    "popup.title": "🤖 AI 요약",
+    "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ 현재 페이지 요약",
     "popup.settings": "⚙️ 설정",
   },

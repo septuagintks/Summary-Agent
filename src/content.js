@@ -1,5 +1,5 @@
 /*
- * Content script for AI Summary extension.
+ * Content script for Summary Agent extension.
  * Port of the AI-summary Tampermonkey userscript (see ../AI-summary).
  *
  * Differences from the userscript:

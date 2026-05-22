@@ -1,4 +1,4 @@
-# Edge Agent — AI Summary
+# Summary Agent
 
 A Microsoft Edge / Chromium extension (Manifest V3) for one-click webpage summarization and follow-up chat. Port of the original [AI-summary](../AI-summary) Tampermonkey userscript, rebuilt around a service-worker streaming relay, draggable in-page panel, and persistent local settings.
 
@@ -38,7 +38,7 @@ Implicit mode waits for **both** signals before firing, instead of a fixed post-
 
 1. Open `edge://extensions` (or `chrome://extensions`).
 2. Toggle **Developer mode** on.
-3. Click **Load unpacked** and select this `Edge-Agent` directory.
+3. Click **Load unpacked** and select this `Summary-Agent` directory.
 4. Pin the extension, open its options page, configure a provider and API key.
 5. Use the floating button, the toolbar popup, or the page context-menu action.
 
