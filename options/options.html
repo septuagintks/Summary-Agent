@@ -32,6 +32,21 @@
 
       <section class="presets" id="presets"></section>
 
+      <section class="custom-tools field-block" id="custom-tools" hidden>
+        <div class="lbl-row">
+          <span class="lbl" data-i18n="opt.custom.toolsLabel"></span>
+        </div>
+        <div class="ct-row">
+          <select id="ct-compat">
+            <option value="openai">OpenAI / Chat Completions</option>
+            <option value="openai-responses">OpenAI / Responses</option>
+            <option value="anthropic">Anthropic / Messages</option>
+            <option value="gemini">Gemini / generateContent</option>
+          </select>
+          <button type="button" id="ct-delete" class="danger" data-i18n="opt.custom.deleteCurrent"></button>
+        </div>
+      </section>
+
       <div class="modal" id="custom-modal" role="dialog" aria-modal="true" aria-labelledby="custom-modal-title" hidden>
         <div class="modal-card">
           <h2 id="custom-modal-title" data-i18n="opt.custom.title"></h2>

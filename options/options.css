@@ -170,25 +170,12 @@ textarea { resize: vertical; min-height: 70px; }
   font-weight: 500;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
+  min-width: var(--chip-min-w, auto);
+  box-sizing: border-box;
 }
 .pre:hover { background: #6366f1; color: #fff; border-color: #6366f1; }
-.pre .pre-del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: rgba(99, 102, 241, .12);
-  color: inherit;
-  font-size: 10px;
-  line-height: 1;
-  cursor: pointer;
-  border: none;
-  padding: 0;
-}
-.pre .pre-del:hover { background: rgba(255, 255, 255, .25); }
 .pre.pre-add {
   background: #fff;
   color: #6366f1;
@@ -201,18 +188,19 @@ textarea { resize: vertical; min-height: 70px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: rgba(99, 102, 241, .12);
+  background: rgba(99, 102, 241, .18);
   color: inherit;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
   cursor: pointer;
   border: none;
   padding: 0;
+  margin-left: 2px;
 }
-.pre .pre-edit:hover { background: rgba(255, 255, 255, .25); }
+.pre .pre-edit:hover { background: rgba(255, 255, 255, .35); }
 
 .key-wrap {
   position: relative;
@@ -221,6 +209,15 @@ textarea { resize: vertical; min-height: 70px; }
 .key-wrap input {
   margin-top: 0;
   padding-right: 38px;
+}
+/* Hide Edge/Chromium's native password reveal so we don't render two eyes. */
+.key-wrap input::-ms-reveal,
+.key-wrap input::-ms-clear,
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
 }
 .key-eye {
   position: absolute;
@@ -253,6 +250,34 @@ textarea { resize: vertical; min-height: 70px; }
   justify-content: center;
   z-index: 100;
 }
+
+.custom-tools[hidden] { display: none; }
+.custom-tools .ct-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+.custom-tools select {
+  padding: 8px 10px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111;
+  background: #fafafa;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  width: 100%;
+}
+.custom-tools select:focus { border-color: #6366f1; background: #fff; }
+.danger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1.5px solid #fecaca;
+  white-space: nowrap;
+}
+.danger:hover { background: #fee2e2; }
 .modal-card {
   background: #fff;
   border-radius: 14px;

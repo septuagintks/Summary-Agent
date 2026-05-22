@@ -27,7 +27,8 @@ API keys and settings are stored in `chrome.storage.local` and never leave the b
 - UI languages: English, 简体中文, 日本語, 한국어. Language switches live across already-open tabs via `chrome.storage.onChanged`.
 - Output-language steering: rather than translating the system/user prompts, the extension appends `Output the summarize text in <Language>.` to the user message, so the model adapts its response.
 - Provider presets: OpenAI (defaults to Responses API `/v1/responses`), Anthropic, Gemini, xAI, DeepSeek, OpenRouter — each with a per-provider model dropdown stocked with current mainstream models.
-- Custom providers: a trailing `+` chip lets you add your own endpoints. Each entry stores name, URL, default model, optional API key (with a reveal "eye" toggle), and a compatibility format chosen from OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, or Gemini `generateContent`. Existing entries can be edited or deleted from the chip.
+- Custom providers: a trailing `+` chip lets you add your own endpoints. Each entry stores name, URL, default model, optional API key (with a reveal "eye" toggle), and a compatibility format chosen from OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, or Gemini `generateContent`. Existing entries can be edited from the pencil affordance; when a custom chip is active, the form exposes an inline compat switcher and a "Delete current provider" button.
+- Provider URLs can be a bare host (e.g. `https://api.openai.com`) or `host/v1`; the request layer auto-completes the path based on the selected compatibility format. The stored URL is left untouched.
 - Free-form custom API URL/key/model plus max tokens, temperature, stream mode, content length, system prompt, and user prompt.
 
 ### Implicit-mode readiness signal

@@ -4,6 +4,28 @@ const RESPONSES_API_MODEL_RE = /^gpt-5/;
 // Compat keys exposed in the custom-provider settings UI.
 export const COMPAT_VALUES = ["openai", "openai-responses", "anthropic", "gemini"];
 
+// Default path applied when the user typed only a host (or host + /v1)
+// instead of a full endpoint. Used at request time only — the stored URL
+// is left intact.
+const COMPAT_DEFAULT_PATH = {
+  "openai": "/v1/chat/completions",
+  "openai-responses": "/v1/responses",
+  "anthropic": "/v1/messages",
+  "gemini": "/v1beta/models/{model}:generateContent?key={key}",
+};
+
+export function completeUrlForCompat(url, compat) {
+  if (!url) return url;
+  const path = COMPAT_DEFAULT_PATH[compat];
+  if (!path) return url;
+  let parsed;
+  try { parsed = new URL(url); } catch { return url; }
+  const clean = parsed.pathname.replace(/\/$/, "");
+  // Only auto-complete when the user typed a host (or just /v1).
+  if (clean === "" || clean === "/v1") return parsed.origin + path;
+  return url;
+}
+
 export function isResponsesModel(model = "") {
   return RESPONSES_API_MODEL_RE.test(model);
 }
@@ -39,10 +61,11 @@ function toResponsesUrl(apiUrl) {
 
 export function buildRequest(cfg, messages, compatOverride = "") {
   const provider = detectProvider(cfg.apiUrl, cfg.model, compatOverride);
+  const completedUrl = completeUrlForCompat(cfg.apiUrl, provider);
 
   if (provider === "openai-responses") {
     return {
-      url: toResponsesUrl(cfg.apiUrl),
+      url: toResponsesUrl(completedUrl),
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
@@ -62,7 +85,7 @@ export function buildRequest(cfg, messages, compatOverride = "") {
 
   if (provider === "anthropic") {
     return {
-      url: cfg.apiUrl,
+      url: completedUrl,
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
@@ -85,7 +108,7 @@ export function buildRequest(cfg, messages, compatOverride = "") {
   }
 
   if (provider === "gemini") {
-    let url = cfg.apiUrl.replace("{model}", cfg.model).replace("{key}", cfg.apiKey);
+    let url = completedUrl.replace("{model}", cfg.model).replace("{key}", cfg.apiKey);
     if (cfg.stream) url = url.replace("generateContent", "streamGenerateContent") + "&alt=sse";
 
     const contents = messages.map((m) => ({
@@ -112,7 +135,7 @@ export function buildRequest(cfg, messages, compatOverride = "") {
   }
 
   return {
-    url: cfg.apiUrl,
+    url: completedUrl,
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",

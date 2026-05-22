@@ -1,6 +1,7 @@
 import { DEFAULTS, PRESETS } from "../src/lib/defaults.js";
 import { Cfg } from "../src/lib/storage.js";
 import { SUPPORTED_LANGS, LANG_LABELS, makeT } from "../src/lib/i18n.js";
+import { completeUrlForCompat } from "../src/lib/providers.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -83,6 +84,7 @@ function fillForm(cfg) {
   $("f-lang").value = cfg.language || "en";
   currentPresetId = detectPresetFromUrl(cfg.apiUrl);
   setLanguage(cfg.language || "en");
+  updateCustomTools();
 }
 
 function detectPresetFromUrl(url) {
@@ -118,6 +120,7 @@ function renderPresets() {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "pre";
+    b.dataset.presetId = p.id;
     const label = document.createElement("span");
     label.textContent = p.name;
     b.appendChild(label);
@@ -127,6 +130,7 @@ function renderPresets() {
       $("f-key").value = await Cfg.getProviderKey(p.id);
       currentPresetId = p.id;
       populateModelDropdown(p.id, p.model);
+      updateCustomTools();
     });
 
     if (p.custom) {
@@ -140,31 +144,6 @@ function renderPresets() {
         openCustomModal(p);
       });
       b.appendChild(edit);
-
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "pre-del";
-      del.textContent = "×";
-      del.title = t("opt.custom.delete");
-      del.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        if (!confirm(t("opt.custom.confirmDelete")(p.name))) return;
-        const next = customProviders.filter((c) => c.id !== p.id);
-        try {
-          await Cfg.setCustomProviders(next);
-          customProviders = next;
-          // Best-effort cleanup of orphaned api key.
-          try { await chrome.storage.local.remove("apiKey_" + p.id); } catch {}
-          if (currentPresetId === p.id) {
-            currentPresetId = null;
-            populateModelDropdown(null, $("f-model").value.trim());
-          }
-          renderPresets();
-        } catch {
-          alert(t("opt.custom.errStorage"));
-        }
-      });
-      b.appendChild(del);
     }
     wrap.appendChild(b);
   }
@@ -177,6 +156,67 @@ function renderPresets() {
   add.title = t("opt.custom.add");
   add.addEventListener("click", () => openCustomModal(null));
   wrap.appendChild(add);
+
+  // Normalize chip min-width to OpenAI's rendered width so short custom
+  // names don't render tiny chips. Read after layout flush.
+  requestAnimationFrame(() => {
+    const ref = wrap.querySelector('.pre[data-preset-id="openai"]');
+    if (ref && !ref.classList.contains("pre-add")) {
+      // Clear first so we measure the natural width, not a previously
+      // applied min-width.
+      wrap.style.removeProperty("--chip-min-w");
+      const w = ref.offsetWidth;
+      if (w > 0) wrap.style.setProperty("--chip-min-w", w + "px");
+    }
+  });
+}
+
+function updateCustomTools() {
+  const tools = $("custom-tools");
+  if (!tools) return;
+  const active = customProviders.find((c) => c.id === currentPresetId);
+  if (!active) {
+    tools.hidden = true;
+    return;
+  }
+  tools.hidden = false;
+  $("ct-compat").value = active.compat || "openai";
+}
+
+function bindCustomTools() {
+  $("ct-compat").addEventListener("change", async (e) => {
+    const active = customProviders.find((c) => c.id === currentPresetId);
+    if (!active) return;
+    const next = customProviders.map((c) =>
+      c.id === active.id ? { ...c, compat: e.target.value } : c
+    );
+    try {
+      await Cfg.setCustomProviders(next);
+      customProviders = next;
+    } catch {
+      alert(t("opt.custom.errStorage"));
+      // Revert UI to the saved value.
+      $("ct-compat").value = active.compat || "openai";
+    }
+  });
+
+  $("ct-delete").addEventListener("click", async () => {
+    const active = customProviders.find((c) => c.id === currentPresetId);
+    if (!active) return;
+    if (!confirm(t("opt.custom.confirmDelete")(active.name))) return;
+    const next = customProviders.filter((c) => c.id !== active.id);
+    try {
+      await Cfg.setCustomProviders(next);
+      customProviders = next;
+      try { await chrome.storage.local.remove("apiKey_" + active.id); } catch {}
+      currentPresetId = null;
+      populateModelDropdown(null, $("f-model").value.trim());
+      updateCustomTools();
+      renderPresets();
+    } catch {
+      alert(t("opt.custom.errStorage"));
+    }
+  });
 }
 
 async function openCustomModal(provider) {
@@ -242,16 +282,20 @@ async function saveCustomProvider() {
     return showErr("opt.custom.errUrlInvalid");
   }
 
-  // Placeholder rules: gemini-style URLs use {model}/{key}; other compat
-  // formats reject those tokens to avoid silently broken requests.
-  const hasKeyPlaceholder = /\{key\}/i.test(url);
-  const hasModelPlaceholder = /\{model\}/i.test(url);
+  // Validate against the completed URL: the request layer auto-fills the
+  // path when the user typed only a host or host+/v1, so a bare host with
+  // gemini compat is fine even though the literal input has no placeholders.
+  const effectiveUrl = completeUrlForCompat(url, compat);
+  const hasKeyPlaceholder = /\{key\}/i.test(effectiveUrl);
+  const hasModelPlaceholder = /\{model\}/i.test(effectiveUrl);
   if (compat === "gemini") {
     if (!hasKeyPlaceholder || !hasModelPlaceholder) {
       return showErr("opt.custom.errGeminiPlaceholders");
     }
   } else {
-    if (hasKeyPlaceholder || hasModelPlaceholder) {
+    // Only complain about placeholders the user typed themselves —
+    // autocomplete never adds them under non-gemini compat.
+    if (/\{key\}/i.test(url) || /\{model\}/i.test(url)) {
       return showErr("opt.custom.errPlaceholderUnsupported");
     }
   }
@@ -278,6 +322,7 @@ async function saveCustomProvider() {
   }
 
   renderPresets();
+  updateCustomTools();
   closeCustomModal();
 }
 
@@ -357,6 +402,7 @@ function bindModelControls() {
     if (id !== currentPresetId) {
       currentPresetId = id;
       populateModelDropdown(id, $("f-model").value.trim());
+      updateCustomTools();
     }
   });
 }
@@ -369,6 +415,7 @@ async function init() {
   bindLanguage();
   bindModelControls();
   bindCustomModal();
+  bindCustomTools();
   bindEyes();
   fillForm(await Cfg.get());
 }
