@@ -15,6 +15,11 @@ let editingId = null;
 // from chrome.storage.local (`models_<presetId>`). Custom providers
 // store their list directly on the entry's `models` field instead.
 const presetModelsCache = new Map();
+// In-memory cache of the effective URL per preset id. Built-in presets
+// check for a user override in chrome.storage.local (`url_<presetId>`)
+// before falling back to the preset's default URL. Custom providers
+// store their URL directly on the entry's `url` field.
+const presetUrlCache = new Map();
 // "Uncommitted custom model name" per custom provider id. When a custom
 // provider is active and the user has typed a model name into f-model
 // that isn't yet in that provider's list (i.e. they haven't pressed +),
@@ -106,7 +111,13 @@ async function fillForm(cfg) {
   setMode(cfg.summarizeMode || "off");
   $("f-lang").value = cfg.language || "en";
   currentPresetId = detectPresetFromUrl(cfg.apiUrl);
-  if (currentPresetId) await loadModelsFor(currentPresetId);
+  if (currentPresetId) {
+    await loadModelsFor(currentPresetId);
+    // Load the effective URL (with override) so the form reflects what's
+    // actually stored, not just the preset's default.
+    const effectiveUrl = await loadUrlFor(currentPresetId);
+    $("f-url").value = effectiveUrl;
+  }
   setLanguage(cfg.language || "en");
   populateModelDropdown(currentPresetId, $("f-model").value.trim());
   updateCustomTools();
@@ -137,6 +148,29 @@ async function loadModelsFor(presetId) {
   const list = override || (builtin?.models ? [...builtin.models] : []);
   presetModelsCache.set(presetId, list);
   return list;
+}
+
+// Return the effective URL for the active preset. For built-in presets
+// we check for a user override saved in `url_<presetId>` before falling
+// back to the preset's default URL; for custom providers we read the
+// entry's `url` field directly. The result lives in `presetUrlCache` so
+// calls during a render pass are cheap.
+async function loadUrlFor(presetId) {
+  if (!presetId) return "";
+  if (presetUrlCache.has(presetId)) return presetUrlCache.get(presetId);
+
+  const customMatch = customProviders.find((c) => c.id === presetId);
+  if (customMatch) {
+    const url = customMatch.url || "";
+    presetUrlCache.set(presetId, url);
+    return url;
+  }
+
+  const builtin = PRESETS.find((p) => p.id === presetId);
+  const override = await Cfg.getPresetUrl(presetId);
+  const url = override || builtin?.url || "";
+  presetUrlCache.set(presetId, url);
+  return url;
 }
 
 function modelsForSync(presetId) {
@@ -231,7 +265,8 @@ function renderPresets() {
       // draft — their input is treated as transient and clears on switch.
       stashCurrentDraft();
 
-      $("f-url").value = p.url;
+      const effectiveUrl = await loadUrlFor(p.id);
+      $("f-url").value = effectiveUrl;
       $("f-key").value = await Cfg.getProviderKey(p.id);
 
       currentPresetId = p.id;
@@ -315,6 +350,7 @@ function bindCustomTools() {
       customProviders = next;
       try { await chrome.storage.local.remove("apiKey_" + active.id); } catch {}
       presetModelsCache.delete(active.id);
+      presetUrlCache.delete(active.id);
       customDraftModels.delete(active.id);
       // The deleted provider was the active one, so clear its URL / key /
       // model from the form too — otherwise the user is staring at the
@@ -588,6 +624,35 @@ $("save").addEventListener("click", async () => {
   const key = $("f-key").value.trim();
   const matched = allPresets().find((p) => p.url === url);
   if (matched && key) await Cfg.setProviderKey(matched.id, key);
+
+  // Persist URL changes back to provider config. For custom providers,
+  // update the entry's `url` field; for built-in presets, write an
+  // override to chrome.storage.local (`url_<presetId>`).
+  if (currentPresetId) {
+    const customIdx = customProviders.findIndex((c) => c.id === currentPresetId);
+    if (customIdx >= 0) {
+      // Custom provider: update the entry's URL field.
+      const next = customProviders.map((c, i) =>
+        i === customIdx ? { ...c, url } : c
+      );
+      await Cfg.setCustomProviders(next);
+      customProviders = next;
+      presetUrlCache.set(currentPresetId, url);
+    } else {
+      // Built-in preset: write URL override to storage.
+      const builtin = PRESETS.find((p) => p.id === currentPresetId);
+      if (builtin) {
+        if (url !== builtin.url) {
+          await Cfg.setPresetUrl(currentPresetId, url);
+          presetUrlCache.set(currentPresetId, url);
+        } else {
+          // User restored the default URL — clear the override.
+          await Cfg.clearPresetUrl(currentPresetId);
+          presetUrlCache.set(currentPresetId, url);
+        }
+      }
+    }
+  }
 
   await Cfg.set({
     language: currentLang,

@@ -59,4 +59,21 @@ export const Cfg = {
     if (!presetId) return;
     await chrome.storage.local.remove("models_" + presetId);
   },
+  // Per-preset URL overrides. Built-in PRESETS ship with a default URL;
+  // users can edit it on the main form and we persist the override under
+  // "url_<presetId>". Returns null when no override exists.
+  async getPresetUrl(presetId) {
+    if (!presetId) return null;
+    const k = "url_" + presetId;
+    const v = await chrome.storage.local.get(k);
+    return typeof v[k] === "string" ? v[k] : null;
+  },
+  async setPresetUrl(presetId, url) {
+    if (!presetId) return;
+    await chrome.storage.local.set({ ["url_" + presetId]: url });
+  },
+  async clearPresetUrl(presetId) {
+    if (!presetId) return;
+    await chrome.storage.local.remove("url_" + presetId);
+  },
 };
