@@ -15,6 +15,13 @@ let editingId = null;
 // from chrome.storage.local (`models_<presetId>`). Custom providers
 // store their list directly on the entry's `models` field instead.
 const presetModelsCache = new Map();
+// "Uncommitted custom model name" per custom provider id. When a custom
+// provider is active and the user has typed a model name into f-model
+// that isn't yet in that provider's list (i.e. they haven't pressed +),
+// switching away stashes the value here so coming back restores it.
+// Built-in presets don't get drafts — their input always clears on
+// switch, per the requested UX.
+const customDraftModels = new Map();
 let t = makeT(currentLang);
 
 const EYE_SHOW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -150,6 +157,27 @@ async function saveModelsFor(presetId, list) {
   }
 }
 
+// Persist the current f-model draft for the leaving provider, but only
+// when the leaving provider is a custom one and the typed value isn't
+// already in its list (otherwise it's just the "selected" model, no
+// need to stash a draft). Built-in presets get their draft cleared on
+// every switch — they don't keep state between visits.
+function stashCurrentDraft() {
+  if (!currentPresetId) return;
+  const isCustom = !!customProviders.find((c) => c.id === currentPresetId);
+  if (!isCustom) {
+    customDraftModels.delete(currentPresetId);
+    return;
+  }
+  const typed = $("f-model").value.trim();
+  const list = modelsForSync(currentPresetId);
+  if (typed && !list.includes(typed)) {
+    customDraftModels.set(currentPresetId, typed);
+  } else {
+    customDraftModels.delete(currentPresetId);
+  }
+}
+
 function populateModelDropdown(presetId, selectedModel) {
   const sel = $("f-model-quick");
   sel.innerHTML = "";
@@ -197,15 +225,27 @@ function renderPresets() {
     label.textContent = p.name;
     b.appendChild(label);
     b.addEventListener("click", async () => {
+      // Switching preset: first stash the leaving provider's "uncommitted
+      // model draft" if it's a custom provider with a non-empty input
+      // that isn't yet in its model list. Built-in presets don't get a
+      // draft — their input is treated as transient and clears on switch.
+      stashCurrentDraft();
+
       $("f-url").value = p.url;
       $("f-key").value = await Cfg.getProviderKey(p.id);
-      // The provider's `model` is a hint ("typical model" stored at add
-      // time), not a hard default — only fill it when the model field is
-      // empty so we don't clobber a user-edited value.
-      const cur = $("f-model").value.trim();
-      if (!cur) $("f-model").value = p.model;
+
       currentPresetId = p.id;
       await loadModelsFor(p.id);
+
+      // Decide what goes into f-model on the new preset:
+      //   1. If this is a custom provider with a stashed draft, restore it.
+      //   2. Otherwise empty the field — explicit user request: switching
+      //      providers clears the input. The provider's `.model` hint is
+      //      no longer auto-populated; the user picks from the dropdown.
+      const isCustom = !!customProviders.find((c) => c.id === p.id);
+      const draft = isCustom ? customDraftModels.get(p.id) : null;
+      $("f-model").value = draft || "";
+
       populateModelDropdown(p.id, $("f-model").value.trim());
       updateCustomTools();
     });
@@ -275,6 +315,7 @@ function bindCustomTools() {
       customProviders = next;
       try { await chrome.storage.local.remove("apiKey_" + active.id); } catch {}
       presetModelsCache.delete(active.id);
+      customDraftModels.delete(active.id);
       // The deleted provider was the active one, so clear its URL / key /
       // model from the form too — otherwise the user is staring at the
       // settings of a provider that no longer exists.
@@ -485,6 +526,10 @@ function bindModelControls() {
     const next = [...list, name];
     try {
       await saveModelsFor(currentPresetId, next);
+      // Once the typed name is in the list, it's no longer a "draft" —
+      // it's a real entry. Clear the per-provider draft so coming back
+      // doesn't restore it as if it were unsaved.
+      customDraftModels.delete(currentPresetId);
       populateModelDropdown(currentPresetId, name);
     } catch {
       alert(t("opt.custom.errStorage"));
