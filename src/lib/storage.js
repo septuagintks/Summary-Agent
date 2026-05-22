@@ -41,4 +41,22 @@ export const Cfg = {
   async setCustomProviders(list) {
     await chrome.storage.local.set({ custom_providers: list });
   },
+  // Per-preset model-list overrides. Built-in PRESETS each ship a default
+  // model dropdown; users can add or remove entries and we persist the
+  // edited list under "models_<presetId>". Returns null when the preset
+  // has no override (so callers can fall back to the built-in list).
+  async getPresetModels(presetId) {
+    if (!presetId) return null;
+    const k = "models_" + presetId;
+    const v = await chrome.storage.local.get(k);
+    return Array.isArray(v[k]) ? v[k] : null;
+  },
+  async setPresetModels(presetId, list) {
+    if (!presetId) return;
+    await chrome.storage.local.set({ ["models_" + presetId]: list });
+  },
+  async clearPresetModels(presetId) {
+    if (!presetId) return;
+    await chrome.storage.local.remove("models_" + presetId);
+  },
 };

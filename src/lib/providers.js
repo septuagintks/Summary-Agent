@@ -4,41 +4,51 @@ const RESPONSES_API_MODEL_RE = /^gpt-5/;
 // Compat keys exposed in the custom-provider settings UI.
 export const COMPAT_VALUES = ["openai", "openai-responses", "anthropic", "gemini"];
 
-// What gets appended after the base path. Splitting "base + tail" lets
-// us complete URLs whose pathname is just the base (e.g. "/v1" or
-// "/api/v1") without rewriting the host or any path prefix the user
-// added in front of the version segment.
-const COMPAT_BASE_PATH = {
-  "openai": "/v1",
-  "openai-responses": "/v1",
-  "anthropic": "/v1",
-  "gemini": "/v1beta",
-};
+// The compat-specific suffix every endpoint terminates with. If the user's
+// URL doesn't already end with this exact tail, we append it. Splitting
+// "base + tail" is no longer needed — we just check the tail, which works
+// regardless of whatever path prefix the user typed in front of the
+// version segment (/v1, /v1beta, /api/v1, /openai/v1, …).
 const COMPAT_TAIL = {
   "openai": "/chat/completions",
   "openai-responses": "/responses",
   "anthropic": "/messages",
   "gemini": "/models/{model}:generateContent?key={key}",
 };
+// Default version segment to fall back to if the URL has no path at all.
+const COMPAT_FALLBACK_BASE = {
+  "openai": "/v1",
+  "openai-responses": "/v1",
+  "anthropic": "/v1",
+  "gemini": "/v1beta",
+};
 
 export function completeUrlForCompat(url, compat) {
   if (!url) return url;
-  const base = COMPAT_BASE_PATH[compat];
   const tail = COMPAT_TAIL[compat];
-  if (!base || !tail) return url;
+  if (!tail) return url;
   let parsed;
   try { parsed = new URL(url); } catch { return url; }
 
-  const path = parsed.pathname.replace(/\/$/, "");
-  // Bare host → assume the user wants the canonical "<origin><base><tail>".
-  if (path === "") return parsed.origin + base + tail;
-  // Path ends at the version segment ("/v1", "/v1beta", "/api/v1",
-  // "/openai/v1", …). Append the compat-specific tail after it.
-  if (path === base || path.endsWith(base)) {
-    return parsed.origin + path + tail + (parsed.search || "");
+  const pathRaw = parsed.pathname || "";
+  const path = pathRaw.replace(/\/$/, "");
+  const search = parsed.search || "";
+
+  // Already complete: pathname ends with the expected tail. For gemini,
+  // the "tail" contains placeholders, so check the static prefix only.
+  const tailStatic = tail.split("?")[0];
+  if (path.endsWith(tailStatic) || path.endsWith(tail.replace(/\?.*/, ""))) {
+    return url;
   }
-  // Anything else is treated as already complete; we don't try to guess.
-  return url;
+
+  // Bare host → use the fallback version segment + tail.
+  if (path === "") return parsed.origin + COMPAT_FALLBACK_BASE[compat] + tail;
+
+  // Otherwise, treat whatever the user typed as the base and append the
+  // compat tail. This handles `/v1`, `/v1beta`, `/api/v1`, `/openai/v1`,
+  // and even URLs that already end in `/v1/` (trailing slash) the same
+  // way without trying to guess where the "version" segment is.
+  return parsed.origin + path + tail + search;
 }
 
 export function isResponsesModel(model = "") {

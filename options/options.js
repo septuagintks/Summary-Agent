@@ -10,6 +10,11 @@ let currentMode = "off";
 let currentPresetId = null;
 let customProviders = [];
 let editingId = null;
+// In-memory cache of the effective model list per preset id. Built by
+// merging the built-in preset's models with the user's saved override
+// from chrome.storage.local (`models_<presetId>`). Custom providers
+// store their list directly on the entry's `models` field instead.
+const presetModelsCache = new Map();
 let t = makeT(currentLang);
 
 const EYE_SHOW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -26,6 +31,17 @@ function applyI18n() {
     const key = el.dataset.i18n;
     const text = t(key);
     if (text != null) el.textContent = text;
+  }
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) {
+    const text = t(el.dataset.i18nPlaceholder);
+    if (text != null) el.placeholder = text;
+  }
+  for (const el of document.querySelectorAll("[data-i18n-title]")) {
+    const text = t(el.dataset.i18nTitle);
+    if (text != null) {
+      el.title = text;
+      el.setAttribute("aria-label", text);
+    }
   }
   setModeHint(currentMode);
   // Refresh model-dropdown localized "Custom" label
@@ -70,7 +86,7 @@ function setModeHint(mode) {
   $("f-mode-hint").textContent = t(key);
 }
 
-function fillForm(cfg) {
+async function fillForm(cfg) {
   $("f-url").value = cfg.apiUrl ?? "";
   $("f-key").value = cfg.apiKey ?? "";
   $("f-model").value = cfg.model ?? "";
@@ -83,7 +99,9 @@ function fillForm(cfg) {
   setMode(cfg.summarizeMode || "off");
   $("f-lang").value = cfg.language || "en";
   currentPresetId = detectPresetFromUrl(cfg.apiUrl);
+  if (currentPresetId) await loadModelsFor(currentPresetId);
   setLanguage(cfg.language || "en");
+  populateModelDropdown(currentPresetId, $("f-model").value.trim());
   updateCustomTools();
 }
 
@@ -91,19 +109,59 @@ function detectPresetFromUrl(url) {
   return allPresets().find((p) => p.url === url)?.id || null;
 }
 
+// Return the effective model list for the active preset. For built-in
+// presets we merge the preset's defaults with any user override saved in
+// `models_<presetId>`; for custom providers we read the entry's `models`
+// field directly. The merged list lives in `presetModelsCache` so calls
+// during a render pass are cheap.
+async function loadModelsFor(presetId) {
+  if (!presetId) return [];
+  if (presetModelsCache.has(presetId)) return presetModelsCache.get(presetId);
+
+  const customMatch = customProviders.find((c) => c.id === presetId);
+  if (customMatch) {
+    const list = Array.isArray(customMatch.models) ? [...customMatch.models] : [];
+    presetModelsCache.set(presetId, list);
+    return list;
+  }
+
+  const builtin = PRESETS.find((p) => p.id === presetId);
+  const override = await Cfg.getPresetModels(presetId);
+  const list = override || (builtin?.models ? [...builtin.models] : []);
+  presetModelsCache.set(presetId, list);
+  return list;
+}
+
+function modelsForSync(presetId) {
+  return presetModelsCache.get(presetId) || [];
+}
+
+async function saveModelsFor(presetId, list) {
+  presetModelsCache.set(presetId, list);
+  const customIdx = customProviders.findIndex((c) => c.id === presetId);
+  if (customIdx >= 0) {
+    const next = customProviders.map((c, i) =>
+      i === customIdx ? { ...c, models: list } : c
+    );
+    await Cfg.setCustomProviders(next);
+    customProviders = next;
+  } else {
+    await Cfg.setPresetModels(presetId, list);
+  }
+}
+
 function populateModelDropdown(presetId, selectedModel) {
   const sel = $("f-model-quick");
   sel.innerHTML = "";
   sel.appendChild(new Option(t("opt.modelCustom"), "__custom__"));
 
-  const preset = allPresets().find((p) => p.id === presetId);
-  if (preset?.models) {
-    for (const m of preset.models) sel.appendChild(new Option(m, m));
-  }
+  const models = modelsForSync(presetId);
+  for (const m of models) sel.appendChild(new Option(m, m));
 
-  sel.value = selectedModel && preset?.models?.includes(selectedModel)
+  sel.value = selectedModel && models.includes(selectedModel)
     ? selectedModel
     : "__custom__";
+  updateModelButtons();
 }
 
 function syncModelDropdown() {
@@ -111,6 +169,20 @@ function syncModelDropdown() {
   const val = $("f-model").value.trim();
   const opts = [...sel.options].map((o) => o.value);
   sel.value = opts.includes(val) ? val : "__custom__";
+  updateModelButtons();
+}
+
+// Enable + only when the input is non-empty and not already in the list;
+// enable − only when the selected dropdown row is a real model (not the
+// "__custom__" placeholder).
+function updateModelButtons() {
+  const sel = $("f-model-quick");
+  const input = $("f-model").value.trim();
+  const models = modelsForSync(currentPresetId);
+  const addBtn = $("f-model-add");
+  const removeBtn = $("f-model-remove");
+  if (addBtn) addBtn.disabled = !currentPresetId || !input || models.includes(input);
+  if (removeBtn) removeBtn.disabled = !currentPresetId || sel.value === "__custom__";
 }
 
 function renderPresets() {
@@ -133,6 +205,7 @@ function renderPresets() {
       const cur = $("f-model").value.trim();
       if (!cur) $("f-model").value = p.model;
       currentPresetId = p.id;
+      await loadModelsFor(p.id);
       populateModelDropdown(p.id, $("f-model").value.trim());
       updateCustomTools();
     });
@@ -201,8 +274,15 @@ function bindCustomTools() {
       await Cfg.setCustomProviders(next);
       customProviders = next;
       try { await chrome.storage.local.remove("apiKey_" + active.id); } catch {}
+      presetModelsCache.delete(active.id);
+      // The deleted provider was the active one, so clear its URL / key /
+      // model from the form too — otherwise the user is staring at the
+      // settings of a provider that no longer exists.
+      $("f-url").value = "";
+      $("f-key").value = "";
+      $("f-model").value = "";
       currentPresetId = null;
-      populateModelDropdown(null, $("f-model").value.trim());
+      populateModelDropdown(null, "");
       updateCustomTools();
       renderPresets();
     } catch {
@@ -296,7 +376,14 @@ async function saveCustomProvider() {
   if (dup) return showErr("opt.custom.errDup");
 
   const id = editingId || ("custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6));
-  const entry = { id, name, url, compat, model, models: [model], custom: true };
+  // When editing, keep whatever the user had built up via the model
+  // editor (the cache holds the latest list); otherwise seed with the
+  // single typed default.
+  const existingModels = editingId
+    ? (customProviders.find((c) => c.id === editingId)?.models || presetModelsCache.get(editingId) || [model])
+    : [model];
+  const models = existingModels.includes(model) ? existingModels : [...existingModels, model];
+  const entry = { id, name, url, compat, model, models, custom: true };
 
   // Build next state in a local first; only mutate the in-memory list once
   // chrome.storage.local accepts the write, so a rejected write doesn't
@@ -309,6 +396,7 @@ async function saveCustomProvider() {
     await Cfg.setCustomProviders(next);
     if (key) await Cfg.setProviderKey(id, key);
     customProviders = next;
+    presetModelsCache.set(id, [...models]);
   } catch {
     return showErr("opt.custom.errStorage");
   }
@@ -384,9 +472,45 @@ function bindModelControls() {
     } else {
       $("f-model").value = v;
     }
+    updateModelButtons();
   });
   $("f-model").addEventListener("input", syncModelDropdown);
-  $("f-url").addEventListener("input", () => {
+
+  $("f-model-add").addEventListener("click", async () => {
+    if (!currentPresetId) return;
+    const name = $("f-model").value.trim();
+    if (!name) return;
+    const list = modelsForSync(currentPresetId);
+    if (list.includes(name)) return;
+    const next = [...list, name];
+    try {
+      await saveModelsFor(currentPresetId, next);
+      populateModelDropdown(currentPresetId, name);
+    } catch {
+      alert(t("opt.custom.errStorage"));
+    }
+  });
+
+  $("f-model-remove").addEventListener("click", async () => {
+    if (!currentPresetId) return;
+    const sel = $("f-model-quick");
+    const target = sel.value;
+    if (!target || target === "__custom__") return;
+    if (!confirm(t("opt.model.confirmRemove", target))) return;
+    const list = modelsForSync(currentPresetId);
+    const next = list.filter((m) => m !== target);
+    try {
+      await saveModelsFor(currentPresetId, next);
+      // If the removed model was also the current "active" model in the
+      // input box, leave the input alone but flip the dropdown to
+      // "__custom__" so the UI matches reality.
+      const stillSelected = $("f-model").value.trim();
+      populateModelDropdown(currentPresetId, stillSelected);
+    } catch {
+      alert(t("opt.custom.errStorage"));
+    }
+  });
+  $("f-url").addEventListener("input", async () => {
     const id = detectPresetFromUrl($("f-url").value.trim());
     // Only switch when the typed URL exactly matches a *different* preset.
     // Mid-edit values that don't match anything must NOT clear
@@ -394,6 +518,7 @@ function bindModelControls() {
     // away while the user is still typing.
     if (id && id !== currentPresetId) {
       currentPresetId = id;
+      await loadModelsFor(id);
       populateModelDropdown(id, $("f-model").value.trim());
       updateCustomTools();
     }
@@ -410,7 +535,7 @@ async function init() {
   bindCustomModal();
   bindCustomTools();
   bindEyes();
-  fillForm(await Cfg.get());
+  await fillForm(await Cfg.get());
 }
 
 $("save").addEventListener("click", async () => {
@@ -443,7 +568,7 @@ $("reset").addEventListener("click", async () => {
   // stored.
   const matched = allPresets().find((p) => p.url === DEFAULTS.apiUrl);
   const apiKey = matched ? await Cfg.getProviderKey(matched.id) : "";
-  fillForm({ ...DEFAULTS, apiKey });
+  await fillForm({ ...DEFAULTS, apiKey });
   flash(t("opt.resetDone"));
 });
 

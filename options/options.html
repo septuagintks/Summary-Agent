@@ -94,8 +94,14 @@
         </div>
       </label>
       <label><span data-i18n="opt.model"></span>
-        <select id="f-model-quick" class="model-quick"></select>
-        <input id="f-model" type="text" placeholder="gpt-3.5-turbo" />
+        <div class="model-row">
+          <select id="f-model-quick" class="model-quick"></select>
+          <button type="button" id="f-model-remove" class="iconbtn iconbtn-minus" data-i18n-title="opt.model.removeTitle" aria-label="Remove from list">−</button>
+        </div>
+        <div class="model-row">
+          <input id="f-model" type="text" data-i18n-placeholder="opt.model.customPlaceholder" placeholder="Custom model name" />
+          <button type="button" id="f-model-add" class="iconbtn iconbtn-plus" data-i18n-title="opt.model.addTitle" aria-label="Add to list">+</button>
+        </div>
       </label>
       <div class="row">
         <label><span data-i18n="opt.maxTokens"></span>
