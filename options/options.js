@@ -6,6 +6,7 @@ const $ = (id) => document.getElementById(id);
 
 let currentLang = "en";
 let currentMode = "off";
+let currentPresetId = null;
 let t = makeT(currentLang);
 
 function applyI18n() {
@@ -17,6 +18,9 @@ function applyI18n() {
     if (text != null) el.textContent = text;
   }
   setModeHint(currentMode);
+  // Refresh model-dropdown localized "Custom" label
+  const sel = $("f-model-quick");
+  if (sel) populateModelDropdown(currentPresetId, $("f-model").value.trim());
 }
 
 function setLanguage(lang) {
@@ -63,7 +67,34 @@ function fillForm(cfg) {
   $("f-prompt").value = cfg.userPrompt ?? "";
   setMode(cfg.summarizeMode || "off");
   $("f-lang").value = cfg.language || "en";
+  currentPresetId = detectPresetFromUrl(cfg.apiUrl);
   setLanguage(cfg.language || "en");
+}
+
+function detectPresetFromUrl(url) {
+  return PRESETS.find((p) => p.url === url)?.id || null;
+}
+
+function populateModelDropdown(presetId, selectedModel) {
+  const sel = $("f-model-quick");
+  sel.innerHTML = "";
+  sel.appendChild(new Option(t("opt.modelCustom"), "__custom__"));
+
+  const preset = PRESETS.find((p) => p.id === presetId);
+  if (preset?.models) {
+    for (const m of preset.models) sel.appendChild(new Option(m, m));
+  }
+
+  sel.value = selectedModel && preset?.models?.includes(selectedModel)
+    ? selectedModel
+    : "__custom__";
+}
+
+function syncModelDropdown() {
+  const sel = $("f-model-quick");
+  const val = $("f-model").value.trim();
+  const opts = [...sel.options].map((o) => o.value);
+  sel.value = opts.includes(val) ? val : "__custom__";
 }
 
 function renderPresets() {
@@ -78,6 +109,8 @@ function renderPresets() {
       $("f-url").value = p.url;
       $("f-model").value = p.model;
       $("f-key").value = await Cfg.getProviderKey(p.id);
+      currentPresetId = p.id;
+      populateModelDropdown(p.id, p.model);
     });
     wrap.appendChild(b);
   }
@@ -107,11 +140,31 @@ function bindLanguage() {
   $("f-lang").addEventListener("change", (e) => setLanguage(e.target.value));
 }
 
+function bindModelControls() {
+  $("f-model-quick").addEventListener("change", (e) => {
+    const v = e.target.value;
+    if (v === "__custom__") {
+      $("f-model").focus();
+    } else {
+      $("f-model").value = v;
+    }
+  });
+  $("f-model").addEventListener("input", syncModelDropdown);
+  $("f-url").addEventListener("input", () => {
+    const id = detectPresetFromUrl($("f-url").value.trim());
+    if (id !== currentPresetId) {
+      currentPresetId = id;
+      populateModelDropdown(id, $("f-model").value.trim());
+    }
+  });
+}
+
 async function init() {
   renderLanguageOptions();
   renderPresets();
   bindSegmented();
   bindLanguage();
+  bindModelControls();
   fillForm(await Cfg.get());
 }
 

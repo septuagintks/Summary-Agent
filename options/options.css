@@ -136,6 +136,23 @@ textarea { resize: vertical; min-height: 70px; }
 }
 .lang-select:focus { border-color: #6366f1; background: #fff; }
 
+.model-quick {
+  width: 100%;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111;
+  background: #fafafa;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  box-sizing: border-box;
+}
+.model-quick:focus { border-color: #6366f1; background: #fff; }
+
 .presets {
   display: flex;
   flex-wrap: wrap;
