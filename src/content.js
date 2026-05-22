@@ -13,6 +13,34 @@
   if (window.__aiSummaryInjected) return;
   window.__aiSummaryInjected = true;
 
+  // Top-level error boundary: any uncaught error during init / event handling
+  // shows a minimal toast instead of silently crashing the extension on this tab.
+  const showFatalError = (err) => {
+    try {
+      console.error("[Summary Agent] Fatal:", err);
+      const toast = document.createElement("div");
+      toast.style.cssText = [
+        "position:fixed", "bottom:20px", "right:20px",
+        "background:#ef4444", "color:#fff",
+        "padding:10px 14px", "border-radius:8px",
+        "font:13px system-ui,sans-serif",
+        "z-index:2147483647",
+        "box-shadow:0 4px 12px rgba(0,0,0,.3)",
+        "max-width:300px",
+      ].join(";");
+      toast.textContent = "⚠️ Summary Agent failed to initialize";
+      document.body?.appendChild(toast);
+      setTimeout(() => toast.remove(), 5000);
+    } catch {}
+  };
+
+  window.addEventListener("error", (e) => {
+    if (e?.filename?.includes("content.js")) showFatalError(e.error || e.message);
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    showFatalError(e.reason);
+  });
+
   /* ================================================
        Constants
     ================================================ */
@@ -193,6 +221,59 @@
     }
   }
 
+  // Cached extraction: avoids re-running the heavy DOM clone on re-summarize.
+  // Invalidated when the URL changes (SPA navigation).
+  let cachedExtraction = null;
+  let cachedExtractionUrl = null;
+
+  async function getExtractedContent() {
+    const currentUrl = location.href;
+
+    if (cachedExtraction && cachedExtractionUrl === currentUrl) {
+      return cachedExtraction;
+    }
+
+    // Try session storage cache (survives panel close/reopen)
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: "extract-cache-get",
+        url: currentUrl,
+      });
+      if (result?.content) {
+        cachedExtraction = result.content;
+        cachedExtractionUrl = currentUrl;
+        return result.content;
+      }
+    } catch {}
+
+    const content = extractContent();
+    cachedExtraction = content;
+    cachedExtractionUrl = currentUrl;
+
+    // Fire and forget cache write
+    chrome.runtime.sendMessage({
+      type: "extract-cache-set",
+      url: currentUrl,
+      content,
+    }).catch(() => {});
+
+    return content;
+  }
+
+  function invalidateExtractionCache() {
+    cachedExtraction = null;
+    cachedExtractionUrl = null;
+  }
+
+  // SPA navigation detection: invalidate cache when URL changes.
+  let lastObservedUrl = location.href;
+  setInterval(() => {
+    if (location.href !== lastObservedUrl) {
+      lastObservedUrl = location.href;
+      invalidateExtractionCache();
+    }
+  }, 2000);
+
   /* ================================================
        Markdown rendering
     ================================================ */
@@ -312,7 +393,7 @@
     ================================================ */
   let currentPort = null;
 
-  function callAPI(messages, { onChunk, onDone, onError }) {
+  function callAPI(messages, { onChunk, onDone, onError, onRetry }) {
     if (currentPort) {
       // Shouldn't happen — callers gate on `streaming` — but if it does
       // (e.g. an implicit run still holding the port), surface it as an
@@ -335,7 +416,8 @@
     port.onMessage.addListener((msg) => {
       if (msg.type === "chunk") onChunk(msg.text);
       else if (msg.type === "done") finish(onDone, msg.text);
-      else if (msg.type === "error") finish(onError, msg.error);
+      else if (msg.type === "error") finish(onError, msg.error, msg);
+      else if (msg.type === "retry") onRetry?.(msg.attempt, msg.maxAttempts);
     });
     port.onDisconnect.addListener(() => {
       if (!finished) finish(onError, "Connection closed");
@@ -970,7 +1052,7 @@
 
   async function runImplicit() {
     if (implicitState.status === "running" || implicitState.status === "done") return;
-    const content = extractContent();
+    const content = await getExtractedContent();
     const title = document.title;
     if (!content || content.length < 50) {
       implicitState.status = "error";
@@ -1113,7 +1195,7 @@
     setLoading(true);
     setBody(`<div class="ais-loading"><div class="ais-spinner"></div> ${esc(t("panel.extracting"))}</div>`);
 
-    const content = extractContent();
+    const content = await getExtractedContent();
     const title = document.title;
     if (!content || content.length < 50) {
       streaming = false;
@@ -1400,7 +1482,11 @@
     }
   });
 
+  const safeInit = async () => {
+    try { await init(); } catch (err) { showFatalError(err); }
+  };
+
   if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", init);
-  else init();
+    document.addEventListener("DOMContentLoaded", safeInit);
+  else safeInit();
 })();

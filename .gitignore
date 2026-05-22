@@ -17,4 +17,5 @@ Thumbs.db
 npm-debug.log*
 
 # Audit reports
-AUDIT.md
+ROADMAP.md
+INFRASTRUCTURE_UPGRADE.md

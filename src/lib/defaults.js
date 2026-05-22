@@ -13,6 +13,15 @@ export const DEFAULTS = {
   // "implicit"   : summarize in the background as soon as the page loads;
   //                opening the panel just reveals whatever's ready
   summarizeMode: "off",
+  // Auto-retry on transient network errors (429, 503, timeouts).
+  // Up to 3 attempts with exponential backoff.
+  autoRetry: true,
+  // Keep last 10 summaries per tab in session storage.
+  // Cleared on tab close or browser restart.
+  enableHistory: true,
+  // Cache extracted page content per-tab to avoid re-extracting on re-summarize.
+  // Invalidated on URL change.
+  enableExtractCache: true,
   systemPrompt: `You are an intelligent web content summarization assistant.
 
 Your goal is to generate concise, high-signal summaries that help users quickly understand webpages.

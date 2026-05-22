@@ -6,14 +6,22 @@ import {
   processSseEvent,
   parseFullResponse,
 } from "./lib/providers.js";
+import {
+  ApiError,
+  ErrorCodes,
+  classifyHttpError,
+  classifyNetworkError,
+} from "./lib/errors.js";
+import { Session } from "./lib/session.js";
 
 // Streaming AI calls in MV3:
 //   content script  ──(port: "ai-call")──▶  service worker
-//                    chunk / done / error
+//                    chunk / done / error / retry
 //   service worker  ──(fetch + ReadableStream)──▶  provider
 //
 // One port per call. Disconnect aborts via AbortController.
 
+const MAX_RETRIES = 3;
 const tabLoadStatus = new Map();
 
 chrome.tabs?.onUpdated.addListener((tabId, changeInfo) => {
@@ -26,6 +34,14 @@ chrome.tabs?.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.tabs?.onRemoved.addListener((tabId) => {
   tabLoadStatus.delete(tabId);
+  Session.clearTabData(tabId).catch(() => {});
+});
+
+chrome.tabs?.onUpdated.addListener((tabId, changeInfo) => {
+  // Invalidate extract cache when URL changes (navigation)
+  if (changeInfo.url) {
+    Session.invalidateExtractCache(tabId).catch(() => {});
+  }
 });
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -42,9 +58,17 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener(async (msg) => {
     if (msg?.type !== "start") return;
     try {
-      await runCall(msg.messages || [], port, controller.signal);
+      await runCall(msg.messages || [], port, controller.signal, msg.options || {});
     } catch (err) {
-      if (!aborted) safePost(port, { type: "error", error: String(err?.message || err) });
+      if (!aborted) {
+        const apiErr = err instanceof ApiError ? err : classifyNetworkError(err);
+        safePost(port, {
+          type: "error",
+          error: apiErr.message,
+          code: apiErr.code,
+          retryable: apiErr.retryable,
+        });
+      }
     }
   });
 });
@@ -53,40 +77,108 @@ function safePost(port, msg) {
   try { port.postMessage(msg); } catch {}
 }
 
-async function runCall(messages, port, signal) {
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("Aborted"));
+      }, { once: true });
+    }
+  });
+}
+
+// Exponential backoff with jitter: 1s, 2s, 4s + random 0-500ms.
+function backoffDelay(attempt) {
+  const base = Math.pow(2, attempt - 1) * 1000;
+  const jitter = Math.random() * 500;
+  return base + jitter;
+}
+
+async function fetchWithRetry(req, signal, port, retryEnabled) {
+  let lastError;
+  const maxAttempts = retryEnabled ? MAX_RETRIES : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      safePost(port, {
+        type: "retry",
+        attempt,
+        maxAttempts,
+      });
+    }
+
+    try {
+      const res = await fetch(req.url, {
+        method: "POST",
+        headers: req.headers,
+        body: req.body,
+        signal,
+      });
+
+      if (res.ok) return { ok: true, response: res };
+
+      const text = await res.text().catch(() => "");
+      const error = classifyHttpError(res.status, text);
+      lastError = error;
+
+      if (!error.retryable || attempt === maxAttempts) {
+        return { ok: false, error };
+      }
+
+      await sleep(backoffDelay(attempt), signal);
+
+    } catch (e) {
+      if (signal.aborted) throw e;
+
+      const error = classifyNetworkError(e);
+      lastError = error;
+
+      if (!error.retryable || attempt === maxAttempts) {
+        return { ok: false, error };
+      }
+
+      await sleep(backoffDelay(attempt), signal);
+    }
+  }
+
+  return { ok: false, error: lastError };
+}
+
+async function runCall(messages, port, signal, options = {}) {
   const cfg = await Cfg.get();
+  const retryEnabled = options.retry !== false;
 
   // Expand placeholders to check if key is actually provided
   const finalUrl = cfg.apiUrl.replace("{key}", cfg.apiKey || "").replace("{model}", cfg.model || "");
   if (!cfg.apiKey || finalUrl.includes("{key}")) {
-    safePost(port, { type: "error", error: "API Key not set, please open settings to configure" });
+    safePost(port, {
+      type: "error",
+      error: "API Key not set, please open settings to configure",
+      code: ErrorCodes.CONFIG_ERROR,
+      retryable: false,
+    });
     return;
   }
 
   const provider = detectProvider(cfg.apiUrl, cfg.model);
   const req = buildRequest(cfg, messages);
 
-  let res;
-  try {
-    res = await fetch(req.url, {
-      method: "POST",
-      headers: req.headers,
-      body: req.body,
-      signal,
-    });
-  } catch (e) {
+  const fetchResult = await fetchWithRetry(req, signal, port, retryEnabled);
+  if (!fetchResult.ok) {
     if (signal.aborted) return;
-    safePost(port, { type: "error", error: "Network error, please check API address and network connection" });
+    safePost(port, {
+      type: "error",
+      error: fetchResult.error.message,
+      code: fetchResult.error.code,
+      retryable: fetchResult.error.retryable,
+      statusCode: fetchResult.error.statusCode,
+    });
     return;
   }
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let msg = `HTTP ${res.status}`;
-    try { msg = JSON.parse(text).error?.message || msg; } catch {}
-    safePost(port, { type: "error", error: msg });
-    return;
-  }
+  const res = fetchResult.response;
 
   if (!cfg.stream) {
     const text = await res.text();
@@ -98,7 +190,12 @@ async function runCall(messages, port, signal) {
 
   const reader = res.body?.getReader();
   if (!reader) {
-    safePost(port, { type: "error", error: "Streaming not supported by response" });
+    safePost(port, {
+      type: "error",
+      error: "Streaming not supported by response",
+      code: ErrorCodes.NETWORK_ERROR,
+      retryable: false,
+    });
     return;
   }
 
@@ -113,7 +210,12 @@ async function runCall(messages, port, signal) {
       result = await reader.read();
     } catch (e) {
       if (signal.aborted) return;
-      safePost(port, { type: "error", error: "Stream read error" });
+      safePost(port, {
+        type: "error",
+        error: "Stream read error",
+        code: ErrorCodes.STREAM_READ_ERROR,
+        retryable: true,
+      });
       return;
     }
     if (result.done) break;
@@ -145,7 +247,7 @@ async function runCall(messages, port, signal) {
   safePost(port, { type: "done", text: fullText });
 }
 
-// Open options page from popup / context menu helpers.
+// Open options page from popup / context menu helpers + history operations.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "open-options") {
     chrome.runtime.openOptionsPage();
@@ -157,6 +259,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({
       ok: true,
       tabStatus: sender.tab?.status || (tabId != null ? tabLoadStatus.get(tabId) : undefined) || "unknown",
+    });
+    return true;
+  }
+  if (msg?.type === "history-get") {
+    const tabId = sender.tab?.id;
+    Session.getHistory(tabId).then((history) => {
+      sendResponse({ ok: true, history });
+    });
+    return true;
+  }
+  if (msg?.type === "history-add") {
+    const tabId = sender.tab?.id;
+    Session.addToHistory(tabId, msg.entry || {}).then((id) => {
+      sendResponse({ ok: true, id });
+    });
+    return true;
+  }
+  if (msg?.type === "history-clear") {
+    const tabId = sender.tab?.id;
+    Session.clearHistory(tabId).then(() => {
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+  if (msg?.type === "extract-cache-get") {
+    const tabId = sender.tab?.id;
+    Session.getExtractedContent(tabId, msg.url).then((content) => {
+      sendResponse({ ok: true, content });
+    });
+    return true;
+  }
+  if (msg?.type === "extract-cache-set") {
+    const tabId = sender.tab?.id;
+    Session.cacheExtractedContent(tabId, msg.url, msg.content).then(() => {
+      sendResponse({ ok: true });
     });
     return true;
   }
