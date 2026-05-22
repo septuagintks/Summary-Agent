@@ -12,8 +12,12 @@ export function isResponsesModel(model = "") {
 export function detectProvider(url, model = "") {
   if (url.includes("anthropic.com")) return "anthropic";
   if (url.includes("generativelanguage.googleapis")) return "gemini";
-  // Explicit Responses API endpoint OR GPT-5 model series
-  if (url.includes("/v1/responses") || isResponsesModel(model)) return "openai-responses";
+  // Explicit Responses API endpoint is always honored.
+  if (url.includes("/v1/responses")) return "openai-responses";
+  // Model-based auto-upgrade only applies to the OpenAI host. Aggregators
+  // like OpenRouter expose GPT-5 through their own chat-completions path
+  // and don't have a /v1/responses endpoint.
+  if (isResponsesModel(model) && url.includes("api.openai.com")) return "openai-responses";
   return "openai";
 }
 
