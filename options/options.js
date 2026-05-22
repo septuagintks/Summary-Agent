@@ -193,7 +193,12 @@ $("save").addEventListener("click", async () => {
 $("reset").addEventListener("click", async () => {
   if (!confirm(t("opt.resetConfirm"))) return;
   await Cfg.reset();
-  fillForm(DEFAULTS);
+  // Reset reverts to DEFAULTS but keeps provider API keys; pull the key
+  // matching the default API URL so the form reflects what's actually
+  // stored.
+  const matched = PRESETS.find((p) => p.url === DEFAULTS.apiUrl);
+  const apiKey = matched ? await Cfg.getProviderKey(matched.id) : "";
+  fillForm({ ...DEFAULTS, apiKey });
   flash(t("opt.resetDone"));
 });
 

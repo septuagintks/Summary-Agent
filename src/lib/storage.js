@@ -13,12 +13,8 @@ export const Cfg = {
     await chrome.storage.local.set(obj);
   },
   async reset() {
-    // Clear provider-specific keys before resetting to defaults
-    const all = await chrome.storage.local.get(null);
-    const providerKeys = Object.keys(all).filter(k => k.startsWith("apiKey_"));
-    if (providerKeys.length > 0) {
-      await chrome.storage.local.remove(providerKeys);
-    }
+    // Preserve provider API keys across reset; users have asked us not to
+    // wipe credentials when restoring defaults.
     await chrome.storage.local.set({ ...DEFAULTS });
   },
   async getProviderKey(presetId) {
