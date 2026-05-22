@@ -36,7 +36,7 @@ export function extractContent() {
     for (const sel of CONTENT_SEL) {
       const el = clone.querySelector(sel);
       if (el) {
-        const t = (el.innerText || el.textContent || "").trim();
+        const t = (el.textContent || "").trim();
         if (t.length > 300) return cleanText(t);
       }
     }
