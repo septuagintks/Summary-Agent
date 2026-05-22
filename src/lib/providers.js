@@ -145,7 +145,10 @@ export function buildRequest(cfg, messages, compatOverride = "") {
     body: JSON.stringify({
       model: cfg.model,
       messages: [{ role: "system", content: cfg.systemPrompt }, ...messages],
-      max_tokens: +cfg.maxTokens,
+      // Newer OpenAI models reject `max_tokens` and require
+      // `max_completion_tokens`. The new field is also accepted by older
+      // models, so we always send it.
+      max_completion_tokens: +cfg.maxTokens,
       temperature: +cfg.temperature,
       stream: cfg.stream,
     }),

@@ -133,18 +133,6 @@ function renderPresets() {
       updateCustomTools();
     });
 
-    if (p.custom) {
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.className = "pre-edit";
-      edit.textContent = "✎";
-      edit.title = t("opt.custom.edit");
-      edit.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        openCustomModal(p);
-      });
-      b.appendChild(edit);
-    }
     wrap.appendChild(b);
   }
 
@@ -203,7 +191,7 @@ function bindCustomTools() {
   $("ct-delete").addEventListener("click", async () => {
     const active = customProviders.find((c) => c.id === currentPresetId);
     if (!active) return;
-    if (!confirm(t("opt.custom.confirmDelete")(active.name))) return;
+    if (!confirm(t("opt.custom.confirmDelete", active.name))) return;
     const next = customProviders.filter((c) => c.id !== active.id);
     try {
       await Cfg.setCustomProviders(next);
@@ -329,9 +317,6 @@ async function saveCustomProvider() {
 function bindCustomModal() {
   $("cp-cancel").addEventListener("click", closeCustomModal);
   $("cp-save").addEventListener("click", saveCustomProvider);
-  $("custom-modal").addEventListener("click", (e) => {
-    if (e.target === $("custom-modal")) closeCustomModal();
-  });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !$("custom-modal").hidden) closeCustomModal();
   });
