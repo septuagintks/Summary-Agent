@@ -82,13 +82,13 @@ export const PRESETS = [
     id: "gemini",
     name: "Gemini",
     url: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3.5-flash",
   },
   {
     id: "xai",
     name: "xAI",
     url: "https://api.x.ai/v1/chat/completions",
-    model: "gork-4.3",
+    model: "grok-4.3",
   },
   {
     id: "deepseek",
@@ -100,6 +100,6 @@ export const PRESETS = [
     id: "openrouter",
     name: "Openrouter",
     url: "https://openrouter.ai/api/v1/chat/completions",
-    model: "google/gemini-3.1-pro-preview",
+    model: "google/gemini-3.5-flash",
   },
 ];

@@ -67,6 +67,7 @@ icons/                   Icon assets / placeholder
 
 - `host_permissions: ["<all_urls>"]` lets the content script run on regular webpages and the service worker reach configured API endpoints.
 - Restricted browser surfaces (`edge://`, `chrome://`, the Web Store, etc.) cannot be injected by extensions; the floating button won't appear there.
+- Anthropic direct calls from the browser require the `anthropic-dangerous-direct-browser-access: true` header (sent automatically). Anthropic treats MV3 service workers as a browser context.
 - API compatibility depends on the selected provider's request/response shape. Custom endpoints should match one of: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Gemini `generateContent`/`streamGenerateContent`.
 
 ## License

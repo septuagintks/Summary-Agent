@@ -59,6 +59,10 @@ export function buildRequest(cfg, messages) {
         "Cache-Control": "no-cache",
         "x-api-key": cfg.apiKey,
         "anthropic-version": "2023-06-01",
+        // Required when calling the Anthropic API directly from a browser
+        // context (MV3 service worker counts). Without it the request is
+        // rejected by Anthropic's CORS guard before reaching the model.
+        "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
         model: cfg.model,
