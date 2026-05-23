@@ -23,7 +23,24 @@ export const Cfg = {
     return v[k] || "";
   },
   async setProviderKey(presetId, key) {
-    await chrome.storage.local.set({ ["apiKey_" + presetId]: key });
+    // Basic format validation
+    if (!key || key.trim().length < 10) {
+      throw new Error("API Key too short");
+    }
+
+    // Preset-specific key format patterns
+    const patterns = {
+      openai: /^sk-[a-zA-Z0-9]{32,}$/,
+      anthropic: /^sk-ant-[a-zA-Z0-9-]{32,}$/,
+      gemini: /^[a-zA-Z0-9_-]{32,}$/,
+    };
+
+    const pattern = patterns[presetId];
+    if (pattern && !pattern.test(key.trim())) {
+      throw new Error(`Invalid API Key format for ${presetId}`);
+    }
+
+    await chrome.storage.local.set({ ["apiKey_" + presetId]: key.trim() });
   },
   async getFabPosition() {
     const v = await chrome.storage.local.get("fab_position");
@@ -77,3 +94,4 @@ export const Cfg = {
     await chrome.storage.local.remove("url_" + presetId);
   },
 };
+

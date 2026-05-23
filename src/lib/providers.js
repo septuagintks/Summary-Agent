@@ -36,9 +36,28 @@ export function completeUrlForCompat(url, compat) {
 
   // Already complete: pathname ends with the expected tail. For gemini,
   // the "tail" contains placeholders, so check the static prefix only.
+  // Also handle percent-encoded placeholders that the URL constructor may introduce.
   const tailStatic = tail.split("?")[0];
-  if (path.endsWith(tailStatic) || path.endsWith(tail.replace(/\?.*/, ""))) {
+  const pathEncoded = path.replace(/%7B/g, "{").replace(/%7D/g, "}");
+  if (
+    path.endsWith(tailStatic) ||
+    pathEncoded.endsWith(tailStatic) ||
+    path.endsWith(tail.replace(/\?.*/, ""))
+  ) {
     return url;
+  }
+
+  // Fix C2: Check if the path already ends with the first segment of the tail.
+  // This handles cases like "/v1/chat" when the tail is "/chat/completions"
+  // — the user typed part of the tail path and we shouldn't double it.
+  // Only applies when the tail has multiple segments (e.g. "/chat/completions").
+  const tailSegments = tailStatic.split("/").filter(Boolean);
+  const pathSegments = path.split("/").filter(Boolean);
+  if (tailSegments.length > 1) {
+    // Check if the path's last segment matches the tail's first segment,
+    // meaning the user already started the tail path.
+    const lastPathSeg = pathSegments[pathSegments.length - 1];
+    if (lastPathSeg === tailSegments[0]) return url;
   }
 
   // Bare host → use the fallback version segment + tail.
@@ -265,3 +284,4 @@ export function parseFullResponse(provider, responseText) {
     return "";
   }
 }
+

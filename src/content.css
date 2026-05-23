@@ -246,6 +246,20 @@
   line-height: 1.6;
 }
 
+/* ---------- Retry hint ---------- */
+.ais-retry-hint {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: #fefce8;
+  border: 1px solid #fde047;
+  border-radius: 6px;
+  color: #a16207;
+  font-size: 12px;
+  font-weight: 500;
+  animation: ais-ti .2s ease;
+}
+
 .ais-ft {
   display: flex;
   gap: 8px;

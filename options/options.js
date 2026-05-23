@@ -406,6 +406,32 @@ function closeCustomModal() {
   editingId = null;
 }
 
+// URL validation helper — validates format, protocol, and hostname.
+function validateUrl(url) {
+  if (!url || url.trim().length === 0) {
+    return { valid: false, error: "URL cannot be empty" };
+  }
+  if (url.length > 500) {
+    return { valid: false, error: "URL too long (max 500 chars)" };
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return { valid: false, error: "URL must use HTTP or HTTPS protocol" };
+    }
+    if (!parsed.hostname) {
+      return { valid: false, error: "URL must have a valid hostname" };
+    }
+    return { valid: true };
+  } catch (e) {
+    if (e instanceof TypeError) {
+      return { valid: false, error: "Invalid URL format" };
+    }
+    return { valid: false, error: String(e) };
+  }
+}
+
 async function saveCustomProvider() {
   const name = $("cp-name").value.trim();
   const url = $("cp-url").value.trim();
@@ -425,10 +451,11 @@ async function saveCustomProvider() {
   if (model.length > 100) return showErr("opt.custom.errModel");
   if (!url || url.length > 500) return showErr("opt.custom.errUrlInvalid");
 
-  let parsed;
-  try { parsed = new URL(url); } catch { return showErr("opt.custom.errUrlInvalid"); }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return showErr("opt.custom.errUrlInvalid");
+  const urlValidation = validateUrl(url);
+  if (!urlValidation.valid) {
+    errEl.textContent = urlValidation.error;
+    errEl.hidden = false;
+    return;
   }
 
   // Validate against the completed URL: the request layer auto-fills the
@@ -622,6 +649,16 @@ async function init() {
 $("save").addEventListener("click", async () => {
   const url = $("f-url").value.trim();
   const key = $("f-key").value.trim();
+
+  // Validate main form URL
+  const urlValidation = validateUrl(url);
+  if (!urlValidation.valid) {
+    const flashEl = $("status");
+    flashEl.textContent = "⚠️ " + urlValidation.error;
+    setTimeout(() => { flashEl.textContent = ""; }, 3000);
+    return;
+  }
+
   const matched = allPresets().find((p) => p.url === url);
   if (matched && key) await Cfg.setProviderKey(matched.id, key);
 

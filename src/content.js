@@ -393,7 +393,7 @@
     ================================================ */
   let currentPort = null;
 
-  function callAPI(messages, { onChunk, onDone, onError, onRetry }) {
+  function callAPI(messages, { onChunk, onDone, onError, onRetry }, retryEnabled = true) {
     if (currentPort) {
       // Shouldn't happen — callers gate on `streaming` — but if it does
       // (e.g. an implicit run still holding the port), surface it as an
@@ -422,7 +422,7 @@
     port.onDisconnect.addListener(() => {
       if (!finished) finish(onError, "Connection closed");
     });
-    port.postMessage({ type: "start", messages });
+    port.postMessage({ type: "start", messages, options: { retry: retryEnabled } });
   }
 
   function abortAPI() {
@@ -1011,7 +1011,7 @@
        Summary / follow-up
     ================================================ */
   async function getCfg() {
-    const KEYS = ["userPrompt", "maxContentLength", "apiKey", "apiUrl", "language"];
+    const KEYS = ["userPrompt", "maxContentLength", "apiKey", "apiUrl", "language", "autoRetry"];
     const got = await chrome.storage.local.get(KEYS);
     return {
       userPrompt:
@@ -1021,6 +1021,7 @@
       apiKey: got.apiKey || "",
       apiUrl: got.apiUrl || "",
       language: got.language || "en",
+      autoRetry: typeof got.autoRetry === "boolean" ? got.autoRetry : true,
     };
   }
 
@@ -1115,7 +1116,18 @@
           implicitState.attached = false;
         }
       },
-    });
+      onRetry(attempt, maxAttempts) {
+        if (implicitState.attached && currentResNode) {
+          const existingHint = currentResNode.querySelector(".ais-retry-hint");
+          if (existingHint) existingHint.remove();
+          const hint = document.createElement("div");
+          hint.className = "ais-retry-hint";
+          hint.textContent = "retry " + attempt + "/" + maxAttempts;
+          currentResNode.appendChild(hint);
+          setTimeout(() => hint.remove(), 2500);
+        }
+      },
+    }, cfg.autoRetry);
   }
 
   // Render the panel body to reflect whatever the implicit run currently
@@ -1244,7 +1256,18 @@
         $("ais-run").style.display = "";
         $("ais-run").textContent = t("panel.resummarize");
       },
-    });
+      onRetry(attempt, maxAttempts) {
+        if (currentResNode) {
+          const existingHint = currentResNode.querySelector(".ais-retry-hint");
+          if (existingHint) existingHint.remove();
+          const hint = document.createElement("div");
+          hint.className = "ais-retry-hint";
+          hint.textContent = "retry " + attempt + "/" + maxAttempts;
+          currentResNode.appendChild(hint);
+          setTimeout(() => hint.remove(), 2500);
+        }
+      },
+    }, cfg.autoRetry);
   }
 
   // `override` may be:
@@ -1254,7 +1277,7 @@
   //                  `display` is what shows in the chat history bubble
   //                  (used for option chips: show the option label, not the
   //                   verbose template we feed the model).
-  function doFollowUp(override) {
+  async function doFollowUp(override) {
     if (streaming) return;
     const inputEl = $("ais-chat-input");
     let sendText, displayText;
@@ -1269,6 +1292,7 @@
     sendText = sendText.trim();
     displayText = displayText.trim();
     if (!sendText) return;
+    const cfg = await getCfg();
 
     if (override == null) inputEl.value = "";
     streaming = true;
@@ -1317,7 +1341,18 @@
         if (override == null) inputEl.value = displayText;
         showChatMode();
       },
-    });
+      onRetry(attempt, maxAttempts) {
+        if (currentResNode) {
+          const existingHint = currentResNode.querySelector(".ais-retry-hint");
+          if (existingHint) existingHint.remove();
+          const hint = document.createElement("div");
+          hint.className = "ais-retry-hint";
+          hint.textContent = "retry " + attempt + "/" + maxAttempts;
+          currentResNode.appendChild(hint);
+          setTimeout(() => hint.remove(), 2500);
+        }
+      },
+    }, cfg.autoRetry);
   }
 
   /* ================================================
