@@ -19,4 +19,5 @@ npm-debug.log*
 # Audit reports
 ROADMAP.md
 INFRASTRUCTURE_UPGRADE.md
-models.md
+AUDIT_REPORT.md
+REVIEW_0.2.4_TO_0.3.10.md
