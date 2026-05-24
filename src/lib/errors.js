@@ -1,3 +1,5 @@
+import { makeT } from "./i18n.js";
+
 // Structured error types for Summary Agent.
 // Distinguishes retryable from non-retryable errors so the retry layer
 // in background.js knows when to back off and try again.
@@ -49,7 +51,8 @@ export class ApiError extends Error {
 
 // Map an HTTP response to an ApiError. Tries to extract a useful message
 // from common provider error shapes before falling back to "HTTP {status}".
-export function classifyHttpError(statusCode, responseText) {
+export function classifyHttpError(statusCode, responseText, lang = "en") {
+  const t = makeT(lang);
   let providerMessage = "";
   try {
     const parsed = JSON.parse(responseText);
@@ -60,36 +63,41 @@ export function classifyHttpError(statusCode, responseText) {
       "";
   } catch {}
 
-  const baseMessage = providerMessage || `HTTP ${statusCode}`;
-
   if (statusCode === 401 || statusCode === 403) {
+    const baseMessage = providerMessage || (lang === "en" ? `HTTP ${statusCode}` : t("error.auth"));
     return new ApiError(baseMessage, ErrorCodes.AUTH_ERROR, statusCode);
   }
   if (statusCode === 429) {
+    const baseMessage = providerMessage || (lang === "en" ? `HTTP ${statusCode}` : t("error.rateLimit"));
     return new ApiError(baseMessage, ErrorCodes.RATE_LIMIT, statusCode);
   }
   if (statusCode >= 500) {
+    const baseMessage = providerMessage || (lang === "en" ? `HTTP ${statusCode}` : t("error.serverError"));
     return new ApiError(baseMessage, ErrorCodes.SERVER_ERROR, statusCode);
   }
   if (statusCode === 400) {
+    const baseMessage = providerMessage || (lang === "en" ? `HTTP ${statusCode}` : t("error.invalidRequest"));
     return new ApiError(baseMessage, ErrorCodes.INVALID_REQUEST, statusCode);
   }
   if (statusCode === 404) {
+    const baseMessage = providerMessage || (lang === "en" ? `HTTP ${statusCode}` : t("error.invalidModel"));
     return new ApiError(baseMessage, ErrorCodes.INVALID_MODEL, statusCode);
   }
+  const baseMessage = providerMessage || (lang === "en" ? `HTTP ${statusCode}` : `${t("error.network")} (HTTP ${statusCode})`);
   return new ApiError(baseMessage, ErrorCodes.NETWORK_ERROR, statusCode);
 }
 
 // Wrap a non-HTTP fetch failure (DNS, abort, network unreachable) into ApiError.
-export function classifyNetworkError(err) {
+export function classifyNetworkError(err, lang = "en") {
+  const t = makeT(lang);
   if (err?.name === "AbortError") {
-    return new ApiError("Request aborted", ErrorCodes.NETWORK_ERROR);
+    return new ApiError(lang === "en" ? "Request aborted" : t("error.aborted"), ErrorCodes.NETWORK_ERROR);
   }
   if (err?.name === "TimeoutError") {
-    return new ApiError("Request timed out", ErrorCodes.TIMEOUT);
+    return new ApiError(lang === "en" ? "Request timed out" : t("error.timeout"), ErrorCodes.TIMEOUT);
   }
   return new ApiError(
-    err?.message || "Network error",
+    err?.message || (lang === "en" ? "Network error" : t("error.network")),
     ErrorCodes.NETWORK_ERROR
   );
 }

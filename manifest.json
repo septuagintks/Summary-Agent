@@ -4,34 +4,12 @@
   "version": "0.3.10",
   "description": "One-click AI summary and follow-up chat on any webpage. Supports OpenAI, Anthropic, Gemini, DeepSeek and other compatible APIs.",
   "author": "Septuagint",
+  "developer": {
+    "name": "Septuagint",
+    "url": "https://github.com/septuagintks/Summary-Agent"
+  },
+  "homepage_url": "https://github.com/septuagintks/Summary-Agent",
   "minimum_chrome_version": "120",
-  "action": {
-    "default_title": "Summary Agent",
-    "default_popup": "src/popup/popup.html"
-  },
-  "options_ui": {
-    "page": "options/options.html",
-    "open_in_tab": true
-  },
-  "background": {
-    "service_worker": "src/background.js",
-    "type": "module"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "src/content.js"
-      ],
-      "css": [
-        "src/content.css"
-      ],
-      "run_at": "document_end",
-      "all_frames": false
-    }
-  ],
   "permissions": [
     "storage",
     "activeTab",
@@ -39,7 +17,41 @@
     "contextMenus"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://summary.septuagint21.org/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Summary Agent"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "css": [
+        "src/content.css"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    }
   ],
   "commands": {
     "_execute_action": {
@@ -49,9 +61,7 @@
       "description": "Toggle Summary Agent panel"
     }
   },
-  "developer": {
-    "name": "Septuagint",
-    "url": "https://github.com/septuagintks/Summary-Agent"
-  },
-  "homepage_url": "https://github.com/septuagintks/Summary-Agent"
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
 }

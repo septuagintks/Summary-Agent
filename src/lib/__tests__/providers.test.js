@@ -125,8 +125,8 @@ describe("completeUrlForCompat", () => {
     it("does NOT double the /chat segment when path ends with /v1/chat (openai)", () => {
       const url = "https://api.openai.com/v1/chat";
       // /v1/chat already has "chat" (first segment of "/chat/completions")
-      // So it should be recognized as containing the tail prefix
-      expect(completeUrlForCompat(url, "openai")).toBe(url);
+      // So it should be completed to /v1/chat/completions
+      expect(completeUrlForCompat(url, "openai")).toBe("https://api.openai.com/v1/chat/completions");
     });
 
     it("does NOT double the /messages segment when path ends with /v1/messages (anthropic)", () => {
@@ -142,7 +142,7 @@ describe("completeUrlForCompat", () => {
     it("does NOT append when path contains a sub-path of tail with extra segments", () => {
       // Path has "chat" in the middle of "api/v1beta/chat" for openai
       const url = "https://api.example.com/api/v1beta/chat";
-      expect(completeUrlForCompat(url, "openai")).toBe(url);
+      expect(completeUrlForCompat(url, "openai")).toBe("https://api.example.com/api/v1beta/chat/completions");
     });
   });
 

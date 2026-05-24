@@ -47,21 +47,33 @@ export function completeUrlForCompat(url, compat) {
     return url;
   }
 
-  // Fix C2: Check if the path already ends with the first segment of the tail.
-  // This handles cases like "/v1/chat" when the tail is "/chat/completions"
-  // — the user typed part of the tail path and we shouldn't double it.
-  // Only applies when the tail has multiple segments (e.g. "/chat/completions").
+  // Fix C2: Check if the path ends with a prefix of the tailStatic to avoid duplication
+  // and correctly complete the rest of the tail.
   const tailSegments = tailStatic.split("/").filter(Boolean);
   const pathSegments = path.split("/").filter(Boolean);
-  if (tailSegments.length > 1) {
-    // Check if the path's last segment matches the tail's first segment,
-    // meaning the user already started the tail path.
-    const lastPathSeg = pathSegments[pathSegments.length - 1];
-    if (lastPathSeg === tailSegments[0]) return url;
+  let overlapCount = 0;
+
+  for (let k = Math.min(pathSegments.length, tailSegments.length); k > 0; k--) {
+    const pathEnd = pathSegments.slice(-k);
+    const tailStart = tailSegments.slice(0, k);
+    if (pathEnd.join("/") === tailStart.join("/")) {
+      overlapCount = k;
+      break;
+    }
   }
 
   // Bare host → use the fallback version segment + tail.
   if (path === "") return parsed.origin + COMPAT_FALLBACK_BASE[compat] + tail;
+
+  if (overlapCount > 0) {
+    const remainingSegments = tailSegments.slice(overlapCount);
+    if (remainingSegments.length === 0) {
+      return url;
+    }
+    const remainingPath = "/" + remainingSegments.join("/");
+    const query = tail.includes("?") ? "?" + tail.split("?")[1] : "";
+    return parsed.origin + path + remainingPath + query;
+  }
 
   // Otherwise, treat whatever the user typed as the base and append the
   // compat tail. This handles `/v1`, `/v1beta`, `/api/v1`, `/openai/v1`,

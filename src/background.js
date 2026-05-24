@@ -14,6 +14,7 @@ import {
 } from "./lib/errors.js";
 import { Session } from "./lib/session.js";
 import { ErrorLogger } from "./lib/logger.js";
+import { makeT } from "./lib/i18n.js";
 
 // Streaming AI calls in MV3:
 self.addEventListener("error", (e) => {
@@ -112,7 +113,7 @@ function backoffDelay(attempt) {
   return base + jitter;
 }
 
-async function fetchWithRetry(req, signal, port, retryEnabled) {
+async function fetchWithRetry(req, signal, port, retryEnabled, lang = "en") {
   let lastError;
   const maxAttempts = retryEnabled ? MAX_RETRIES : 1;
 
@@ -136,7 +137,7 @@ async function fetchWithRetry(req, signal, port, retryEnabled) {
       if (res.ok) return { ok: true, response: res };
 
       const text = await res.text().catch(() => "");
-      const error = classifyHttpError(res.status, text);
+      const error = classifyHttpError(res.status, text, lang);
       lastError = error;
 
       if (!error.retryable || attempt === maxAttempts) {
@@ -148,7 +149,7 @@ async function fetchWithRetry(req, signal, port, retryEnabled) {
     } catch (e) {
       if (signal.aborted) throw e;
 
-      const error = classifyNetworkError(e);
+      const error = classifyNetworkError(e, lang);
       lastError = error;
 
       if (!error.retryable || attempt === maxAttempts) {
@@ -171,14 +172,16 @@ async function fetchWithRetry(req, signal, port, retryEnabled) {
 async function runCall(messages, port, signal, options = {}) {
   const cfg = await Cfg.get();
   const retryEnabled = options.retry !== false;
+  const lang = cfg.language || "en";
 
   // M2: Check apiKey directly rather than via URL placeholder substitution,
   // because Gemini URLs legitimately contain "{key}" and would always match
   // an includes("{key}") check even when the key is actually set.
   if (!cfg.apiKey || cfg.apiKey.trim().length < 2) {
+    const t = makeT(lang);
     safePost(port, {
       type: "error",
-      error: "API Key not set, please open settings to configure",
+      error: t("panel.apiKeyMissing"),
       code: ErrorCodes.CONFIG_ERROR,
       retryable: false,
     });
@@ -192,7 +195,7 @@ async function runCall(messages, port, signal, options = {}) {
   const provider = detectProvider(cfg.apiUrl, cfg.model, compatOverride);
   const req = buildRequest(cfg, messages, compatOverride);
 
-  const fetchResult = await fetchWithRetry(req, signal, port, retryEnabled);
+  const fetchResult = await fetchWithRetry(req, signal, port, retryEnabled, lang);
   if (!fetchResult.ok) {
     if (signal.aborted) return;
     const error = fetchResult.error || new ApiError("Unknown request error", ErrorCodes.NETWORK_ERROR);

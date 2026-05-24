@@ -509,6 +509,27 @@ async function saveCustomProvider() {
   const dup = allPresets().find((p) => p.url === url && p.id !== editingId);
   if (dup) return showErr("opt.custom.errDup");
 
+  // Request optional host permission for the custom provider's URL
+  try {
+    const parsedUrl = new URL(url);
+    const originPattern = parsedUrl.origin + "/*";
+    const hasPermission = await chrome.permissions.contains({
+      origins: [originPattern]
+    });
+    if (!hasPermission) {
+      const granted = await chrome.permissions.request({
+        origins: [originPattern]
+      });
+      if (!granted) {
+        return showErr("opt.custom.errStorage"); // Or a more specific permission error if desired
+      }
+    }
+  } catch (e) {
+    errEl.textContent = "Failed to request permission for URL: " + e.message;
+    errEl.hidden = false;
+    return;
+  }
+
   const id = editingId || ("custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6));
   // When editing, keep whatever the user had built up via the model
   // editor (the cache holds the latest list); otherwise seed with the

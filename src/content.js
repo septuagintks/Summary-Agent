@@ -279,12 +279,34 @@
 
   // SPA navigation detection: invalidate cache when URL changes.
   let lastObservedUrl = location.href;
-  setInterval(() => {
+
+  // Listen to browser back/forward navigation
+  window.addEventListener("popstate", () => {
     if (location.href !== lastObservedUrl) {
       lastObservedUrl = location.href;
       invalidateExtractionCache();
     }
-  }, 2000);
+  });
+
+  // Intercept pushState and replaceState to detect programmatic SPA navigation
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+
+  history.pushState = function (...args) {
+    originalPushState.apply(this, args);
+    if (location.href !== lastObservedUrl) {
+      lastObservedUrl = location.href;
+      invalidateExtractionCache();
+    }
+  };
+
+  history.replaceState = function (...args) {
+    originalReplaceState.apply(this, args);
+    if (location.href !== lastObservedUrl) {
+      lastObservedUrl = location.href;
+      invalidateExtractionCache();
+    }
+  };
 
   /* ================================================
        Markdown rendering
