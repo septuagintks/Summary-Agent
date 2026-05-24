@@ -25,8 +25,8 @@
           message: err?.message || String(err),
           stack: err?.stack,
           context: { source: "content_fatal" },
-          version: chrome.runtime?.getManifest?.()?.version || "unknown",
-          userAgent: navigator.userAgent
+          // version metadata is captured by ErrorLogger in logger.js
+          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown"
         });
         chrome.storage.local.set({ error_logs: list.slice(0, 50) });
       }).catch(() => {});
@@ -1044,9 +1044,11 @@
   // model reliably recognizes it.
   function buildUserMsg(userPrompt, title, content, maxLen) {
     const langName = OUTPUT_LANG_NAME[currentLang] || "English";
+    const safeTitle = (String(title) || "").trim().slice(0, 2000);
+    const safeContent = (String(content) || "").trim().slice(0, maxLen);
     const filled = userPrompt
-      .replace("{title}", title)
-      .replace("{content}", String(content).slice(0, maxLen));
+      .replace("{title}", safeTitle)
+      .replace("{content}", safeContent);
     return `${filled}\n\nOutput the summarize text in ${langName}.`;
   }
 
@@ -1484,7 +1486,7 @@
       if (fired || !tabComplete || document.readyState !== "complete") return;
       fired = true;
       cleanup();
-      requestAnimationFrame(runImplicit);
+            requestAnimationFrame(runImplicit);
     };
     const reportReadyState = () => {
       chrome.runtime
@@ -1493,7 +1495,14 @@
           if (res?.tabStatus === "complete") tabComplete = true;
           fireWhenReady();
         })
-        .catch(() => {});
+        .catch(() => {
+          // M5: SW not available yet — treat as "unknown" and let local
+          // readyState decide. Without this fallback, an implicit run on
+          // the very first tab would never fire because tabComplete stays
+          // false indefinitely.
+          if (document.readyState === "complete") tabComplete = true;
+          fireWhenReady();
+        });
     };
     function onReadyState() {
       reportReadyState();
@@ -1507,9 +1516,14 @@
       }
     }
 
+    // M5: Register listeners BEFORE the first reportReadyState() call to
+    // eliminate the window between listener registration and message
+    // dispatch where the SW response could arrive before onRuntimeMessage
+    // is attached.
     chrome.runtime.onMessage.addListener(onRuntimeMessage);
     document.addEventListener("readystatechange", onReadyState);
     window.addEventListener("load", onReadyState, { once: true });
+    // First call is safe now — listeners are already registered.
     reportReadyState();
   }
 
