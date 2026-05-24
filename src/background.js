@@ -13,6 +13,7 @@ import {
   classifyNetworkError,
 } from "./lib/errors.js";
 import { Session } from "./lib/session.js";
+import { ErrorLogger } from "./lib/logger.js";
 
 // Streaming AI calls in MV3:
 self.addEventListener("error", (e) => {
@@ -68,7 +69,7 @@ chrome.runtime.onConnect.addListener((port) => {
       await runCall(msg.messages || [], port, controller.signal, msg.options || {});
     } catch (err) {
       if (!aborted) {
-        ErrorLogger.log(err, { type: ai-call });
+        ErrorLogger.log(err, { type: "ai-call" });
         const apiErr = err instanceof ApiError ? err : classifyNetworkError(err);
         safePost(port, {
           type: "error",
@@ -89,10 +90,14 @@ function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
     if (signal) {
-      signal.addEventListener("abort", () => {
+      const onAbort = () => {
         clearTimeout(timer);
-        reject(new Error("Aborted"));
-      }, { once: true });
+        reject(new DOMException("The operation was aborted", "AbortError"));
+      };
+      // Guard against already-aborted signals to avoid enqueueing
+      // a listener that would never fire while the promise hangs forever.
+      if (signal.aborted) { onAbort(); return; }
+      signal.addEventListener("abort", onAbort, { once: true });
     }
   });
 }
@@ -151,6 +156,12 @@ async function fetchWithRetry(req, signal, port, retryEnabled) {
     }
   }
 
+  // Safeguard: when the loop exits without setting `lastError` (unlikely
+  // but possible with edge cases like signal abortion mid-sleep), create a
+  // generic fallback error instead of returning `undefined`.
+  if (!lastError) {
+    lastError = new ApiError("Request failed after all attempts", ErrorCodes.NETWORK_ERROR);
+  }
   return { ok: false, error: lastError };
 }
 
@@ -180,12 +191,13 @@ async function runCall(messages, port, signal, options = {}) {
   const fetchResult = await fetchWithRetry(req, signal, port, retryEnabled);
   if (!fetchResult.ok) {
     if (signal.aborted) return;
+    const error = fetchResult.error || new ApiError("Unknown request error", ErrorCodes.NETWORK_ERROR);
     safePost(port, {
       type: "error",
-      error: fetchResult.error.message,
-      code: fetchResult.error.code,
-      retryable: fetchResult.error.retryable,
-      statusCode: fetchResult.error.statusCode,
+      error: error.message,
+      code: error.code,
+      retryable: error.retryable,
+      statusCode: error.statusCode,
     });
     return;
   }
@@ -337,3 +349,4 @@ chrome.contextMenus?.onClicked.addListener((info, tab) => {
     chrome.tabs.sendMessage(tab.id, { type: "open-and-summarize" }).catch(() => {});
   }
 });
+

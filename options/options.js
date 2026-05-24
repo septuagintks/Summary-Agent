@@ -432,6 +432,29 @@ function validateUrl(url) {
   }
 }
 
+// Model name validation helper: ensures the model identifier follows
+// a reasonable format. Accepts patterns like:
+//   "gpt-5.5", "claude-sonnet-4.6", "gemini-3.5-flash",
+//   "anthropic/claude-opus-4.7" (OpenRouter style),
+//   "custom-model-name-123".
+function validateModelName(name) {
+  if (!name || name.trim().length === 0) {
+    return { valid: false, error: "Model name cannot be empty" };
+  }
+  const trimmed = name.trim();
+  if (trimmed.length > 200) {
+    return { valid: false, error: "Model name too long (max 200 chars)" };
+  }
+  if (/[<>"']/.test(trimmed)) {
+    return { valid: false, error: "Model name contains invalid characters" };
+  }
+  // Must contain at least one alphanumeric character.
+  if (!/[a-zA-Z0-9]/.test(trimmed)) {
+    return { valid: false, error: "Model name must contain at least one alphanumeric character" };
+  }
+  return { valid: true };
+}
+
 async function saveCustomProvider() {
   const name = $("cp-name").value.trim();
   const url = $("cp-url").value.trim();
@@ -444,6 +467,13 @@ async function saveCustomProvider() {
     errEl.textContent = t(k);
     errEl.hidden = false;
   };
+
+  const modelValidation = validateModelName(model);
+  if (!modelValidation.valid) {
+    errEl.textContent = modelValidation.error;
+    errEl.hidden = false;
+    return;
+  }
 
   if (!name) return showErr("opt.custom.errName");
   if (name.length > 50) return showErr("opt.custom.errNameLong");
@@ -655,6 +685,15 @@ $("save").addEventListener("click", async () => {
   if (!urlValidation.valid) {
     const flashEl = $("status");
     flashEl.textContent = "⚠️ " + urlValidation.error;
+    setTimeout(() => { flashEl.textContent = ""; }, 3000);
+    return;
+  }
+
+  // Validate model name
+  const modelValidation = validateModelName($("f-model").value.trim());
+  if (!modelValidation.valid) {
+    const flashEl = $("status");
+    flashEl.textContent = "⚠️ " + modelValidation.error;
     setTimeout(() => { flashEl.textContent = ""; }, 3000);
     return;
   }
