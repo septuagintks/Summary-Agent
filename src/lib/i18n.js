@@ -109,6 +109,20 @@ export const STRINGS = {
     "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ Summarize current page",
     "popup.settings": "⚙️ Settings",
+    "opt.export": "📤 Export",
+    "opt.import": "📥 Import",
+    "opt.exported": "✓ Settings exported",
+    "opt.imported": "✓ Settings imported",
+    "opt.importConfirm": "This will overwrite your current settings (API keys are preserved). Continue?",
+    "opt.testConnectionTitle": "Test API connection",
+    "opt.conn.testing": "Testing connection...",
+    "opt.conn.success": "✓ Connection successful",
+    "opt.conn.fail": "✖ Connection failed",
+    "opt.conn.skipped": "⏭ No API key configured",
+    "opt.feedback": "Feedback: ",
+    "panel.clearHistoryTitle": "Clear chat history",
+    "panel.historyCleared": "✓ Chat history cleared",
+
   },
 
   zh: {
@@ -203,6 +217,20 @@ export const STRINGS = {
     "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ 总结当前页面",
     "popup.settings": "⚙️ 设置",
+    "opt.export": "📤 导出设置",
+    "opt.import": "📥 导入设置",
+    "opt.exported": "✓ 设置已导出",
+    "opt.imported": "✓ 设置已导入",
+    "opt.importConfirm": "这将覆盖当前设置（API Key 不会被覆盖）。是否继续？",
+    "opt.testConnectionTitle": "测试 API 连接",
+    "opt.conn.testing": "正在测试连接...",
+    "opt.conn.success": "✓ 连接成功",
+    "opt.conn.fail": "✖ 连接失败",
+    "opt.conn.skipped": "⏭ 未配置 API Key",
+    "opt.feedback": "反馈意见：",
+    "panel.clearHistoryTitle": "清空聊天记录",
+    "panel.historyCleared": "✓ 聊天记录已清空",
+
   },
 
   ja: {
@@ -297,6 +325,20 @@ export const STRINGS = {
     "popup.title": "🤖 Summary Agent",
     "popup.run": "✨ このページを要約",
     "popup.settings": "⚙️ 設定",
+    "opt.export": "📤 エクスポート",
+    "opt.import": "📥 インポート",
+    "opt.exported": "✓ 設定をエクスポートしました",
+    "opt.imported": "✓ 設定をインポートしました",
+    "opt.importConfirm": "現在の設定が上書きされます（API キーは保持されます）。続行しますか？",
+    "opt.testConnectionTitle": "API 接続をテスト",
+    "opt.conn.testing": "接続をテスト中...",
+    "opt.conn.success": "✓ 接続成功",
+    "opt.conn.fail": "✖ 接続失敗",
+    "opt.conn.skipped": "⏭ API キーが設定されていません",
+    "opt.feedback": "フィードバック：",
+    "panel.clearHistoryTitle": "チャット履歴をクリア",
+    "panel.historyCleared": "✓ チャット履歴をクリアしました",
+
   },
 
   ko: {

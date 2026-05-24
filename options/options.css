@@ -393,3 +393,43 @@ button.primary {
 }
 button.secondary { background: #f3f4f6; color: #374151; }
 .status { margin-left: auto; font-size: 12px; color: #16a34a; }
+
+
+/* M13: URL row with test button */
+.url-row {
+  display: grid;
+  grid-template-columns: 1fr 36px;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+.url-row input { margin: 0; }
+.iconbtn.iconbtn-test { font-size: 14px; }
+
+.conn-status {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.conn-status.conn-ok { color: #16a34a; background: #f0fdf4; }
+.conn-status.conn-err { color: #b91c1c; background: #fef2f2; }
+
+/* M14: Feedback bar */
+.feedback-bar {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f3f4f6;
+  font-size: 12px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.feedback-link {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 500;
+}
+.feedback-link:hover { text-decoration: underline; }

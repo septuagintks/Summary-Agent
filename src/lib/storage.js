@@ -1,16 +1,45 @@
 import { DEFAULTS } from "./defaults.js";
 
+// M20: Storage schema version.
+const STORAGE_VERSION = 1;
+const STORAGE_VERSION_KEY = "_storage_version";
+
 const KEYS = Object.keys(DEFAULTS);
 
 export const Cfg = {
   async get() {
     const stored = await chrome.storage.local.get(KEYS);
+    // M20: Run storage migration if version is out of date.
+    await migrateStorage(stored);
+
+    // M19: Warn if deprecated config keys are still present.
+    const deprecatedKeys = ["autoSummarizeOnOpen"];
+    for (const dk of deprecatedKeys) {
+      if (stored[dk] !== undefined) {
+        console.warn("[Summary Agent] Config key \"" + dk + "\" is deprecated. Run the extension once to auto-migrate it.");
+      }
+    }
     const out = {};
     for (const k of KEYS) out[k] = stored[k] ?? DEFAULTS[k];
     return out;
   },
   async set(obj) {
     await chrome.storage.local.set(obj);
+    // M17: Warn when storage usage is high.
+    try {
+      if (navigator?.storage?.estimate) {
+        const est = await navigator.storage.estimate();
+        const usedMB = (est.usage || 0) / (1024 * 1024);
+        const quotaMB = (est.quota || 10 * 1024 * 1024) / (1024 * 1024);
+        if (usedMB > quotaMB * 0.8) {
+          console.warn(
+            "[Summary Agent] Storage at " + usedMB.toFixed(1) + " MB (" +
+            (usedMB / quotaMB * 100).toFixed(0) + "% of ~" + quotaMB.toFixed(0) + " MB quota). " +
+            "Consider clearing error logs or resetting settings."
+          );
+        }
+      }
+    } catch () {}
   },
   async reset() {
     // Preserve provider API keys across reset; users have asked us not to
@@ -95,3 +124,24 @@ export const Cfg = {
   },
 };
 
+
+// M20: Migrate storage from older versions to the current schema.
+// Idempotent: only acts when _storage_version is absent or < current.
+async function migrateStorage(stored) {
+  const currentVersion = stored[STORAGE_VERSION_KEY];
+  if (currentVersion === STORAGE_VERSION) return;
+
+  // version 0 -> 1: rename autoSummarizeOnOpen -> summarizeMode
+  if (currentVersion == null && stored.autoSummarizeOnOpen != null) {
+    if (stored.summarizeMode == null) {
+      stored.summarizeMode = stored.autoSummarizeOnOpen ? "on-open" : "off";
+      await chrome.storage.local.set({ summarizeMode: stored.summarizeMode });
+    }
+    await chrome.storage.local.remove("autoSummarizeOnOpen");
+  }
+
+  await chrome.storage.local.set({ [STORAGE_VERSION_KEY]: STORAGE_VERSION });
+  if (currentVersion == null) {
+    console.log("[Summary Agent] Storage migrated to v" + STORAGE_VERSION);
+  }
+}

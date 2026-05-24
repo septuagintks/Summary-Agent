@@ -663,6 +663,40 @@ function bindModelControls() {
   });
 }
 
+// M13: Test API connection by sending a lightweight HEAD request.
+async function testConnection() {
+  const url = $("f-url")?.value.trim();
+  const key = $("f-key")?.value.trim();
+  const statusEl = $("connection-status");
+  if (!statusEl) return;
+  statusEl.hidden = false;
+  statusEl.className = "conn-status";
+  statusEl.textContent = t("opt.conn.testing");
+
+  if (!key || !url) {
+    statusEl.textContent = t("opt.conn.skipped");
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(url, {
+      method: "HEAD",
+      headers: { "Authorization": "Bearer " + key },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    statusEl.textContent = resp.ok
+      ? t("opt.conn.success")
+      : t("opt.conn.fail") + " (" + resp.status + ")";
+    statusEl.className = "conn-status " + (resp.ok ? "conn-ok" : "conn-err");
+  } catch (e) {
+    statusEl.textContent = t("opt.conn.fail") + ": " + (e.name === "AbortError" ? "timeout" : e.message);
+    statusEl.className = "conn-status conn-err";
+  }
+}
+
 async function init() {
   customProviders = await Cfg.getCustomProviders();
   renderLanguageOptions();
@@ -745,6 +779,62 @@ $("save").addEventListener("click", async () => {
   });
   flash(t("opt.saved"));
 });
+
+// M12: Export all settings as a downloadable JSON file (API keys excluded).
+async function exportSettings() {
+  try {
+    const all = await chrome.storage.local.get(null);
+    const safe = {};
+    for (const [k, v] of Object.entries(all)) {
+      if (!k.startsWith("apiKey_") && k !== "apiKey" && k !== "error_logs") {
+        safe[k] = v;
+      }
+    }
+    safe._exportVersion = chrome.runtime?.getManifest?.()?.version || "unknown";
+    safe._exportedAt = new Date().toISOString();
+    const blob = new Blob([JSON.stringify(safe, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "summary-agent-settings.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    flash(t("opt.exported"));
+  } catch (e) {
+    flash("\u26a0\ufe0f Export failed: " + e.message);
+  }
+}
+
+// M12: Import settings from a user-selected JSON file.
+async function importSettings() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || typeof data !== "object" || (!data.apiUrl && !data.language)) {
+        throw new Error("Not a valid Summary Agent settings file");
+      }
+      if (!confirm(t("opt.importConfirm"))) return;
+      delete data._exportVersion;
+      delete data._exportedAt;
+      await chrome.storage.local.set(data);
+      flash(t("opt.imported"));
+      setTimeout(() => location.reload(), 500);
+    } catch (e) {
+      flash("\u26a0\ufe0f Import failed: " + e.message);
+    }
+  });
+  input.click();
+}
+
+// M12: Wire export/import buttons.
+document.getElementById("export-settings")?.addEventListener("click", exportSettings);
+document.getElementById("import-settings")?.addEventListener("click", importSettings);
 
 $("reset").addEventListener("click", async () => {
   if (!confirm(t("opt.resetConfirm"))) return;

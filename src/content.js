@@ -24,7 +24,7 @@
           timestamp: new Date().toISOString(),
           message: err?.message || String(err),
           stack: err?.stack,
-          context: { source: "content_fatal" },
+          context: { source: "content_fatal", url: location.href },
           // version metadata is captured by ErrorLogger in logger.js
           userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown"
         });
@@ -355,6 +355,28 @@
     }, 2200);
   }
 
+  function clearHistory() {
+    chatHistory = [];
+    fullText = "";
+    if (currentPort) { abortAPI(); }
+    streaming = false;
+    setLoading(false);
+    const metaEl = $("ais-meta");
+    if (metaEl) metaEl.textContent = esc(document.title);
+    const body = $("ais-body");
+    if (body) {
+      body.innerHTML = '<div class="ais-ph">' + t("panel.placeholder") + '</div>';
+    }
+    const runBtn = $("ais-run");
+    if (runBtn) {
+      runBtn.style.display = "";
+      runBtn.textContent = t("panel.start");
+    }
+    $("ais-chat-wrap").style.display = "none";
+    currentResNode = null;
+    showToast(t("panel.historyCleared"), "#6366f1");
+  }
+
   function setLoading(v) {
     const run = $("ais-run"), stop = $("ais-stop"), chat = $("ais-chat-wrap");
     if (stop) stop.style.display = v ? "" : "none";
@@ -464,8 +486,9 @@
     panel.innerHTML = `
       <div class="ais-hd">
         <span class="ais-hd-title" data-i18n="panel.title"></span>
-        <button class="ais-hbtn" id="ais-copy"     data-i18n="panel.copy"></button>
-        <button class="ais-hbtn" id="ais-cfg-open" data-i18n="panel.settings"></button>
+                <button class="ais-hbtn" id="ais-clear-history" data-i18n-title="panel.clearHistoryTitle" title="Clear chat history">🗑️</button>
+        <button class="ais-hbtn" id="ais-copy"          data-i18n="panel.copy"></button>
+        <button class="ais-hbtn" id="ais-cfg-open"       data-i18n="panel.settings"></button>
         <button class="ais-hbtn" id="ais-main-close" data-i18n="panel.close"></button>
       </div>
       <div class="ais-meta" id="ais-meta">${esc(document.title)}</div>
@@ -953,6 +976,14 @@
        Main panel events
     ================================================ */
   function bindMainEvents() {
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && panelOpen && !$("custom-modal")?.hidden) {
+        panelOpen = false;
+        implicitState.attached = false;
+        toggle("ais-main", false);
+      }
+    });
+        $("ais-clear-history").addEventListener("click", () => { clearHistory(); });
     $("ais-main-close").addEventListener("click", () => {
       panelOpen = false;
       implicitState.attached = false; // implicit run continues in background but stops writing to DOM

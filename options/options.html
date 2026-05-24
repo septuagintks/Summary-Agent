@@ -85,7 +85,11 @@
       </div>
 
       <label><span data-i18n="opt.apiUrl"></span>
-        <input id="f-url" type="text" placeholder="https://api.openai.com/v1/chat/completions" />
+        <div class="url-row">
+          <input id="f-url" type="text" placeholder="https://api.openai.com/v1/chat/completions" />
+          <button type="button" id="f-test-connection" class="iconbtn iconbtn-test" data-i18n-title="opt.testConnectionTitle" title="Test connection">🔍</button>
+        </div>
+        <div id="connection-status" class="conn-status" hidden></div>
       </label>
       <label><span data-i18n="opt.apiKey"></span>
         <div class="key-wrap">
@@ -126,9 +130,15 @@
 
       <footer>
         <button id="reset"  class="secondary" data-i18n="opt.reset"></button>
+        <button id="export-settings" class="secondary" data-i18n="opt.export"></button>
+        <button id="import-settings" class="secondary" data-i18n="opt.import"></button>
         <button id="save"   class="primary"   data-i18n="opt.save"></button>
         <span id="status" class="status"></span>
       </footer>
+      <div class="feedback-bar">
+        <span data-i18n="opt.feedback"></span>
+        <a href="mailto:septuagintsh@outlook.com" class="feedback-link">septuagintsh@outlook.com</a>
+      </div>
     </main>
     <script type="module" src="options.js"></script>
   </body>
