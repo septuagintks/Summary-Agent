@@ -127,27 +127,33 @@ function detectPresetFromUrl(url) {
   return allPresets().find((p) => p.url === url)?.id || null;
 }
 
+// Helper to load preset overrides (models or url) to reduce code duplication (M1)
+async function loadPresetOverride(presetId, key, cache, getter, fallbackDefault) {
+  if (!presetId) return fallbackDefault;
+  if (cache.has(presetId)) return cache.get(presetId);
+
+  const customMatch = customProviders.find((c) => c.id === presetId);
+  if (customMatch) {
+    const val = customMatch[key];
+    const result = key === "models" ? (Array.isArray(val) ? [...val] : []) : (val || "");
+    cache.set(presetId, result);
+    return result;
+  }
+
+  const builtin = PRESETS.find((p) => p.id === presetId);
+  const override = await getter(presetId);
+  const result = override || (builtin?.[key] ? (key === "models" ? [...builtin[key]] : builtin[key]) : fallbackDefault);
+  cache.set(presetId, result);
+  return result;
+}
+
 // Return the effective model list for the active preset. For built-in
 // presets we merge the preset's defaults with any user override saved in
 // `models_<presetId>`; for custom providers we read the entry's `models`
 // field directly. The merged list lives in `presetModelsCache` so calls
 // during a render pass are cheap.
 async function loadModelsFor(presetId) {
-  if (!presetId) return [];
-  if (presetModelsCache.has(presetId)) return presetModelsCache.get(presetId);
-
-  const customMatch = customProviders.find((c) => c.id === presetId);
-  if (customMatch) {
-    const list = Array.isArray(customMatch.models) ? [...customMatch.models] : [];
-    presetModelsCache.set(presetId, list);
-    return list;
-  }
-
-  const builtin = PRESETS.find((p) => p.id === presetId);
-  const override = await Cfg.getPresetModels(presetId);
-  const list = override || (builtin?.models ? [...builtin.models] : []);
-  presetModelsCache.set(presetId, list);
-  return list;
+  return loadPresetOverride(presetId, "models", presetModelsCache, Cfg.getPresetModels, []);
 }
 
 // Return the effective URL for the active preset. For built-in presets
@@ -156,21 +162,7 @@ async function loadModelsFor(presetId) {
 // entry's `url` field directly. The result lives in `presetUrlCache` so
 // calls during a render pass are cheap.
 async function loadUrlFor(presetId) {
-  if (!presetId) return "";
-  if (presetUrlCache.has(presetId)) return presetUrlCache.get(presetId);
-
-  const customMatch = customProviders.find((c) => c.id === presetId);
-  if (customMatch) {
-    const url = customMatch.url || "";
-    presetUrlCache.set(presetId, url);
-    return url;
-  }
-
-  const builtin = PRESETS.find((p) => p.id === presetId);
-  const override = await Cfg.getPresetUrl(presetId);
-  const url = override || builtin?.url || "";
-  presetUrlCache.set(presetId, url);
-  return url;
+  return loadPresetOverride(presetId, "url", presetUrlCache, Cfg.getPresetUrl, "");
 }
 
 function modelsForSync(presetId) {
