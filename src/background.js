@@ -33,23 +33,26 @@ const MAX_RETRIES = 3;
 const tabLoadStatus = new Map();
 
 chrome.tabs?.onUpdated.addListener((tabId, changeInfo) => {
-  if (!changeInfo.status) return;
-  tabLoadStatus.set(tabId, changeInfo.status);
-  if (changeInfo.status === "complete") {
-    chrome.tabs.sendMessage(tabId, { type: "tab-status", status: "complete" }).catch(() => {});
+  // M1: Merged single listener — handles both status and URL-change events
+  // in one registration to avoid duplicate listeners on the same event.
+  if (changeInfo.status) {
+    tabLoadStatus.set(tabId, changeInfo.status);
+    if (changeInfo.status === "complete") {
+      chrome.tabs
+        .sendMessage(tabId, { type: "tab-status", status: "complete" })
+        .catch(() => {});
+    }
   }
-});
-
-chrome.tabs?.onRemoved.addListener((tabId) => {
-  tabLoadStatus.delete(tabId);
-  Session.clearTabData(tabId).catch(() => {});
-});
-
-chrome.tabs?.onUpdated.addListener((tabId, changeInfo) => {
   // Invalidate extract cache when URL changes (navigation)
   if (changeInfo.url) {
     Session.invalidateExtractCache(tabId).catch(() => {});
   }
+});
+
+chrome.tabs?.onRemoved.addListener((tabId) => {
+  // M4: Also clean up tabLoadStatus to prevent memory leaks.
+  tabLoadStatus.delete(tabId);
+  Session.clearTabData(tabId).catch(() => {});
 });
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -169,9 +172,10 @@ async function runCall(messages, port, signal, options = {}) {
   const cfg = await Cfg.get();
   const retryEnabled = options.retry !== false;
 
-  // Expand placeholders to check if key is actually provided
-  const finalUrl = cfg.apiUrl.replace("{key}", cfg.apiKey || "").replace("{model}", cfg.model || "");
-  if (!cfg.apiKey || finalUrl.includes("{key}")) {
+  // M2: Check apiKey directly rather than via URL placeholder substitution,
+  // because Gemini URLs legitimately contain "{key}" and would always match
+  // an includes("{key}") check even when the key is actually set.
+  if (!cfg.apiKey || cfg.apiKey.trim().length < 2) {
     safePost(port, {
       type: "error",
       error: "API Key not set, please open settings to configure",
