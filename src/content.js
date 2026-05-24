@@ -18,6 +18,18 @@
   const showFatalError = (err) => {
     try {
       console.error("[Summary Agent] Fatal:", err);
+      chrome.storage.local.get("error_logs").then(logs => {
+        const list = logs.error_logs || [];
+        list.unshift({
+          timestamp: new Date().toISOString(),
+          message: err?.message || String(err),
+          stack: err?.stack,
+          context: { source: "content_fatal" },
+          version: chrome.runtime?.getManifest?.()?.version || "unknown",
+          userAgent: navigator.userAgent
+        });
+        chrome.storage.local.set({ error_logs: list.slice(0, 50) });
+      }).catch(() => {});
       const toast = document.createElement("div");
       toast.style.cssText = [
         "position:fixed", "bottom:20px", "right:20px",

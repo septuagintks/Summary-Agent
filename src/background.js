@@ -15,6 +15,13 @@ import {
 import { Session } from "./lib/session.js";
 
 // Streaming AI calls in MV3:
+self.addEventListener("error", (e) => {
+  ErrorLogger.log(e.error || new Error(e.message), { source: "background_error" });
+});
+self.addEventListener("unhandledrejection", (e) => {
+  ErrorLogger.log(e.reason || new Error("Unhandled Rejection"), { source: "background_unhandledrejection" });
+});
+
 //   content script  ──(port: "ai-call")──▶  service worker
 //                    chunk / done / error / retry
 //   service worker  ──(fetch + ReadableStream)──▶  provider
@@ -61,6 +68,7 @@ chrome.runtime.onConnect.addListener((port) => {
       await runCall(msg.messages || [], port, controller.signal, msg.options || {});
     } catch (err) {
       if (!aborted) {
+        ErrorLogger.log(err, { type: ai-call });
         const apiErr = err instanceof ApiError ? err : classifyNetworkError(err);
         safePost(port, {
           type: "error",
