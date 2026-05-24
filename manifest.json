@@ -20,6 +20,9 @@
     "https://api.openai.com/*",
     "https://api.anthropic.com/*",
     "https://generativelanguage.googleapis.com/*",
+    "https://api.deepseek.com/*",
+    "https://api.x.ai/*",
+    "https://openrouter.ai/*",
     "https://summary.septuagint21.org/*"
   ],
   "optional_host_permissions": [
